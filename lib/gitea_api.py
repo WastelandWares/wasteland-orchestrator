@@ -13,11 +13,13 @@ Usage:
     gitea.create_issue("tquick/meeting-scribe", "Title", "Body", labels=[1, 2])
 """
 
+from __future__ import annotations
+
 import json
 import os
 import subprocess
 import tempfile
-from typing import Optional
+from typing import Optional, Union
 
 
 class GiteaClient:
@@ -42,7 +44,7 @@ class GiteaClient:
             or os.environ.get("GITEA_BASIC_AUTH", "")
         )
 
-    def _curl(self, method: str, endpoint: str, data: Optional[dict] = None, params: Optional[dict] = None) -> dict | list | str:
+    def _curl(self, method: str, endpoint: str, data: Optional[dict] = None, params: Optional[dict] = None) -> Union[dict, list, str]:
         """Execute a curl request with dual-auth."""
         # Build URL with token and params
         url = f"{self.api_url}/{endpoint}?token={self.token}"
