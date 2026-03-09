@@ -26,6 +26,7 @@ from typing import Optional
 from lib.agent_status import AgentStatus, list_agents
 from lib.conflict import detect_conflicts, apply_serialization, print_conflicts
 from lib.manifest import SprintManifest, Story
+from lib.monitor import HealthMonitor, print_health_report
 
 
 STATUS_DIR = os.path.expanduser("~/.claude/agents/status")
@@ -196,10 +197,23 @@ class Dispatcher:
                 self.completed.add(story.id)
             return True
 
+        health_monitor = HealthMonitor(self)
+        health_check_counter = 0
+
         while not self._shutdown:
             # Check running agents
             for story_id in list(self.agents.keys()):
                 self._check_agent(story_id)
+
+            # Periodic health monitoring (every 3rd poll)
+            health_check_counter += 1
+            if health_check_counter % 3 == 0:
+                issues = health_monitor.check_all()
+                if issues:
+                    print_health_report(issues)
+                    for issue in issues:
+                        if issue.severity == "critical":
+                            health_monitor.attempt_recovery(issue)
 
             # Check if we're done
             total = len(self.manifest.stories)
