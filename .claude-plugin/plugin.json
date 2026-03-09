@@ -1,0 +1,23 @@
+{
+  "name": "wasteland-orchestrator",
+  "description": "AI agent orchestration plugin: status reporting, transactions, team coordination, and real-time dashboard for multi-agent Claude Code workflows",
+  "version": "0.1.0",
+  "author": {
+    "name": "Thomas Quick",
+    "email": "tquick@wastelandwares.com"
+  },
+  "homepage": "https://github.com/severeon/wasteland-orchestrator",
+  "repository": "https://github.com/severeon/wasteland-orchestrator",
+  "license": "MIT",
+  "keywords": [
+    "orchestration",
+    "agents",
+    "multi-agent",
+    "dashboard",
+    "status",
+    "transactions",
+    "team-coordination",
+    "gitea",
+    "project-management"
+  ]
+}
