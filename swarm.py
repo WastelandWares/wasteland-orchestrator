@@ -26,6 +26,7 @@ from typing import Optional
 from lib.agent_status import AgentStatus, list_agents
 from lib.conflict import detect_conflicts, apply_serialization, print_conflicts
 from lib.manifest import SprintManifest, Story
+from lib.gitea_updates import GiteaUpdater
 from lib.monitor import HealthMonitor, print_health_report
 
 
@@ -55,6 +56,7 @@ class Dispatcher:
         self.completed: set[str] = set()
         self.failed: set[str] = set()
         self._shutdown = False
+        self.gitea = GiteaUpdater(manifest.repo) if manifest.repo else None
 
         # Register signal handlers for clean shutdown
         signal.signal(signal.SIGINT, self._handle_signal)
@@ -110,6 +112,12 @@ class Dispatcher:
 
         print(f"[swarm] Spawning {story.agent} for {story.id}: {story.title}")
 
+        if self.gitea and not self.dry_run:
+            try:
+                self.gitea.on_story_started(story)
+            except Exception as e:
+                print(f"[swarm] Warning: Gitea update failed: {e}")
+
         if self.dry_run:
             print(f"[swarm]   DRY RUN: would run: claude -p '<prompt>' > {output_file}")
             return AgentProcess(story=story, state="done")
@@ -144,10 +152,20 @@ class Dispatcher:
                 ap.state = "done"
                 self.completed.add(story_id)
                 print(f"[swarm] {story_id} completed successfully")
+                if self.gitea:
+                    try:
+                        self.gitea.on_story_completed(ap.story)
+                    except Exception as e:
+                        print(f"[swarm] Warning: Gitea close failed: {e}")
             else:
                 ap.state = "failed"
                 self.failed.add(story_id)
                 print(f"[swarm] {story_id} FAILED (exit code {ret})")
+                if self.gitea:
+                    try:
+                        self.gitea.on_story_failed(ap.story, f"exit code {ret}")
+                    except Exception as e:
+                        print(f"[swarm] Warning: Gitea update failed: {e}")
 
     def _ready_stories(self) -> list[Story]:
         """Find stories whose dependencies are met and haven't started."""
@@ -240,6 +258,13 @@ class Dispatcher:
         for story_id, ap in self.agents.items():
             status = "OK" if ap.state == "done" else ap.state.upper()
             print(f"  {story_id}: {ap.story.title} [{status}]")
+
+        # Post final sprint status to Gitea
+        if self.gitea and not self.dry_run:
+            try:
+                self.gitea.post_sprint_status(self.manifest, self.completed, self.failed)
+            except Exception as e:
+                print(f"[swarm] Warning: Gitea sprint status failed: {e}")
 
         return len(self.failed) == 0 and not self._shutdown
 
