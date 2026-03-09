@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Optional
 
 from lib.agent_status import AgentStatus, list_agents
+from lib.conflict import detect_conflicts, apply_serialization, print_conflicts
 from lib.manifest import SprintManifest, Story
 
 
@@ -172,6 +173,13 @@ class Dispatcher:
         """
         print(f"[swarm] Starting sprint: {self.manifest.sprint}")
         print(f"[swarm] {len(self.manifest.stories)} stories, max {self.manifest.max_parallel} parallel")
+
+        # Detect and resolve file ownership conflicts
+        conflicts = detect_conflicts(self.manifest)
+        if conflicts:
+            print_conflicts(conflicts)
+            apply_serialization(self.manifest, conflicts)
+            print("[swarm] Serialization edges added to prevent conflicts")
 
         if self.dry_run:
             print("\n[swarm] === DRY RUN — Execution Plan ===")
