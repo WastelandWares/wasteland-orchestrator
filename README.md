@@ -75,7 +75,7 @@ See `skills/agent-protocol/SKILL.md` for the full protocol specification.
 from lib.agent_tx import Transaction
 
 tx = Transaction("dev-lead-ms")
-tx.begin("Implementing assistant skeleton", "Sprint 1 story #17", repo="tquick/meeting-scribe", issue=17)
+tx.begin("Implementing assistant skeleton", "Phase 1 task #17", repo="tquick/meeting-scribe", issue=17)
 tx.action("Created src/assistant.py", "Core assistant class with Ollama client")
 tx.action("Updated pipeline.py", "Integrated assistant as post-transcription stage")
 tx.end("success", "Assistant skeleton in place, ready for model integration")

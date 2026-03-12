@@ -227,7 +227,7 @@ Thomas / contributors
 | **Pixel** | Mobile UX | Mobile UI/UX design, accessibility, interaction patterns |
 | **Sigil** | Brand Designer | Visual identity, style guides, marketing assets |
 | **Dev Team Lead** | Phase Coordinator | Per-project implementation, agent dispatch, review cycle |
-| **Documentation Agent** | Docs Keeper | Changelog, README, CLAUDE.md reconciliation, end-of-sprint docs |
+| **Documentation Agent** | Docs Keeper | Changelog, README, CLAUDE.md reconciliation, end-of-phase docs |
 
 ---
 

@@ -19,13 +19,13 @@ When the user runs `/status`, do the following:
 ## Agent Status
 | Agent | State | Task | Last Heartbeat | Alive |
 |-------|-------|------|----------------|-------|
-| pm | working | Planning sprint 2 | 30s ago | yes |
+| pm | working | Planning phase 2 | 30s ago | yes |
 | dev-lead-ms | idle | Ready | 2m ago | yes |
 
 ## Active Transactions
 | Agent | Intent | Actions | Started |
 |-------|--------|---------|---------|
-| pm | Planning sprint 2 | 3 actions | 5m ago |
+| pm | Planning phase 2 | 3 actions | 5m ago |
 ```
 
 4. Flag any stale agents (heartbeat > 5 minutes) or dead processes

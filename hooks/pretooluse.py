@@ -91,7 +91,7 @@ def check_worktree_isolation(command: str) -> dict | None:
             "decision": "allow",
             "systemMessage": (
                 "WARNING: Dev agents should work in worktrees, not the main working tree. "
-                "Use: git worktree add ../.worktrees/{story-id} -b {branch-name}"
+                "Use: git worktree add ../.worktrees/{task-id} -b {branch-name}"
             ),
         }
 

@@ -1,14 +1,14 @@
 """Conflict detection via file ownership.
 
-Analyzes a sprint manifest to detect stories that touch the same files.
-Stories with overlapping file ownership must be serialized (not run in
+Analyzes a phase manifest to detect tasks that touch the same files.
+Tasks with overlapping file ownership must be serialized (not run in
 parallel) to prevent merge conflicts.
 
 Usage:
     from lib.conflict import detect_conflicts, apply_serialization
-    from lib.manifest import SprintManifest
+    from lib.manifest import PhaseManifest
 
-    manifest = SprintManifest.from_yaml("sprint.yaml")
+    manifest = PhaseManifest.from_yaml("phase.yaml")
     conflicts = detect_conflicts(manifest)
     if conflicts:
         apply_serialization(manifest, conflicts)
@@ -20,43 +20,43 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Optional
 
-from lib.manifest import SprintManifest
+from lib.manifest import PhaseManifest
 
 
 @dataclass
 class FileConflict:
-    """A conflict where multiple stories touch the same file."""
+    """A conflict where multiple tasks touch the same file."""
 
     file_path: str
-    story_ids: list[str]
+    task_ids: list[str]
 
 
-def build_ownership_map(manifest: SprintManifest) -> dict[str, list[str]]:
-    """Build a map of file -> list of story IDs that touch it."""
+def build_ownership_map(manifest: PhaseManifest) -> dict[str, list[str]]:
+    """Build a map of file -> list of task IDs that touch it."""
     ownership: dict[str, list[str]] = defaultdict(list)
-    for story in manifest.stories:
-        for f in story.files:
-            ownership[f].append(story.id)
+    for task in manifest.tasks:
+        for f in task.files:
+            ownership[f].append(task.id)
     return dict(ownership)
 
 
-def detect_conflicts(manifest: SprintManifest) -> list[FileConflict]:
-    """Find files touched by multiple stories."""
+def detect_conflicts(manifest: PhaseManifest) -> list[FileConflict]:
+    """Find files touched by multiple tasks."""
     ownership = build_ownership_map(manifest)
     conflicts = []
-    for file_path, story_ids in ownership.items():
-        if len(story_ids) > 1:
-            conflicts.append(FileConflict(file_path=file_path, story_ids=story_ids))
+    for file_path, task_ids in ownership.items():
+        if len(task_ids) > 1:
+            conflicts.append(FileConflict(file_path=file_path, task_ids=task_ids))
     return conflicts
 
 
 def apply_serialization(
-    manifest: SprintManifest,
+    manifest: PhaseManifest,
     conflicts: Optional[list[FileConflict]] = None,
 ) -> list[FileConflict]:
-    """Add dependency edges to serialize conflicting stories.
+    """Add dependency edges to serialize conflicting tasks.
 
-    For each conflict, the story with the higher issue number gets a
+    For each conflict, the task with the higher issue number gets a
     dependency on the lower one, ensuring sequential execution.
 
     Returns the conflicts that were resolved.
@@ -67,18 +67,18 @@ def apply_serialization(
     if not conflicts:
         return []
 
-    # Build a lookup for stories
-    story_map = {s.id: s for s in manifest.stories}
+    # Build a lookup for tasks
+    task_map = {s.id: s for s in manifest.tasks}
 
     for conflict in conflicts:
-        # Sort by issue number (or story ID) to get deterministic ordering
+        # Sort by issue number (or task ID) to get deterministic ordering
         sorted_ids = sorted(
-            conflict.story_ids,
-            key=lambda sid: story_map[sid].issue or 0,
+            conflict.task_ids,
+            key=lambda sid: task_map[sid].issue or 0,
         )
-        # Chain them: each story depends on the previous one
+        # Chain them: each task depends on the previous one
         for i in range(1, len(sorted_ids)):
-            later = story_map[sorted_ids[i]]
+            later = task_map[sorted_ids[i]]
             earlier_id = sorted_ids[i - 1]
             if earlier_id not in later.depends_on:
                 later.depends_on.append(earlier_id)
@@ -93,4 +93,4 @@ def print_conflicts(conflicts: list[FileConflict]) -> None:
         return
     print(f"[conflict] {len(conflicts)} file conflict(s) detected:")
     for c in conflicts:
-        print(f"  {c.file_path}: {', '.join(c.story_ids)}")
+        print(f"  {c.file_path}: {', '.join(c.task_ids)}")
