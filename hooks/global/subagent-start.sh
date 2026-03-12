@@ -29,7 +29,7 @@ fi
 
 # Set agent name for this subagent
 PARENT_AGENT="${CLAUDE_AGENT_NAME:-unknown}"
-export CLAUDE_AGENT_NAME="sub-${AGENT_TYPE}-$$"
+export CLAUDE_AGENT_NAME="sub-${AGENT_TYPE}-${AGENT_ID}"
 
 # ── Auto tx_begin (#54) ──────────────────────────────────────────────
 # Start a transaction automatically for the subagent

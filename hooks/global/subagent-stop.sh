@@ -32,7 +32,7 @@ case "$AGENT_TYPE" in
 esac
 
 # Set agent name to match what SubagentStart set
-export CLAUDE_AGENT_NAME="sub-${AGENT_TYPE}-$$"
+export CLAUDE_AGENT_NAME="sub-${AGENT_TYPE}-${AGENT_ID}"
 
 # Auto tx_end (#54)
 if type tx_end &>/dev/null; then

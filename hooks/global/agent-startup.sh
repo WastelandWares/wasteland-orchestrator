@@ -102,10 +102,17 @@ if [[ -f "$DISPATCH_CTX_FILE" ]]; then
     --agent "${CLAUDE_AGENT_NAME}" 2>/dev/null || true
 fi
 
-# Verify Gitea access (non-fatal, quiet)
-GITEA_CHECK=$(curl -sf -o /dev/null -w "%{http_code}" \
-  -u "cheeseburger:xq1Ka03aCQX1ak0qFvTSyOhpwm2gA7oSjASQTkEoB0dXe69zMm9GG" \
-  "https://git.wastelandwares.com/api/v1/version?token=b2922e6ba5274205f0c16829f7aa002d98fe5f7d" 2>/dev/null || echo "000")
+# Verify Gitea access (non-fatal, quiet) — use env vars instead of hardcoded credentials
+GITEA_USER="${GITEA_USER:-}"
+GITEA_PASS="${GITEA_PASS:-}"
+GITEA_TOKEN="${GITEA_TOKEN:-}"
+if [[ -n "$GITEA_USER" && -n "$GITEA_PASS" ]]; then
+  GITEA_CHECK=$(curl -sf -o /dev/null -w "%{http_code}" \
+    -u "${GITEA_USER}:${GITEA_PASS}" \
+    "https://git.wastelandwares.com/api/v1/version?token=${GITEA_TOKEN}" 2>/dev/null || echo "000")
+else
+  GITEA_CHECK="000"
+fi
 
 # Update status to idle (ready for work)
 if type agent_status_update &>/dev/null; then
