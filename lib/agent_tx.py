@@ -7,7 +7,7 @@ Usage:
     from lib.agent_tx import Transaction
 
     tx = Transaction("pm")
-    tx.begin("Implementing rolling summary", "Sprint 1 story #18", repo="tquick/meeting-scribe", issue=18)
+    tx.begin("Implementing rolling summary", "Phase 1 task #18", repo="tquick/meeting-scribe", issue=18)
     tx.action("Created src/summary_prompt.py", "Prompt template for condensed meeting minutes")
     tx.action("Updated pipeline.py", "Integrated summary into batch loop")
     tx.end("success", "Rolling summary working")

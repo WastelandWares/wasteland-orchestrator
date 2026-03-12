@@ -33,7 +33,7 @@ PROCESS_DEAD_GRACE_SEC = 30  # grace period after process death before flagging
 class HealthIssue:
     """A detected health problem with an agent."""
 
-    story_id: str
+    task_id: str
     agent_name: str
     issue_type: str  # stale_heartbeat | process_dead | no_status_file
     message: str
@@ -59,31 +59,31 @@ class HealthMonitor:
         issues: list[HealthIssue] = []
         now = datetime.datetime.now(datetime.timezone.utc)
 
-        for story_id, ap in self.dispatcher.agents.items():
+        for task_id, ap in self.dispatcher.agents.items():
             if ap.state != "running":
                 continue
 
-            story_issues = self._check_agent(story_id, ap, now)
-            issues.extend(story_issues)
+            task_issues = self._check_agent(task_id, ap, now)
+            issues.extend(task_issues)
 
         return issues
 
     def _check_agent(
         self,
-        story_id: str,
+        task_id: str,
         ap: AgentProcess,
         now: datetime.datetime,
     ) -> list[HealthIssue]:
         """Check a single agent's health."""
         issues: list[HealthIssue] = []
-        agent_name = ap.story.agent
+        agent_name = ap.task.agent
 
         # Check if process is still alive
         if ap.process is not None and ap.process.poll() is not None:
             exit_code = ap.process.returncode
             if exit_code != 0:
                 issues.append(HealthIssue(
-                    story_id=story_id,
+                    story_id=task_id,
                     agent_name=agent_name,
                     issue_type="process_dead",
                     message=f"Process exited with code {exit_code}",
@@ -95,7 +95,7 @@ class HealthMonitor:
         status_file = os.path.join(STATUS_DIR, f"{agent_name}.json")
         if not os.path.exists(status_file):
             issues.append(HealthIssue(
-                story_id=story_id,
+                story_id=task_id,
                 agent_name=agent_name,
                 issue_type="no_status_file",
                 message="No status file found",
@@ -111,7 +111,7 @@ class HealthMonitor:
                 age_sec = (now - hb_dt).total_seconds()
                 if age_sec > self.stale_threshold:
                     issues.append(HealthIssue(
-                        story_id=story_id,
+                        story_id=task_id,
                         agent_name=agent_name,
                         issue_type="stale_heartbeat",
                         message=f"Heartbeat stale for {int(age_sec)}s (threshold: {self.stale_threshold}s)",
@@ -125,24 +125,24 @@ class HealthMonitor:
 
         Returns True if recovery was attempted.
         """
-        story_id = issue.story_id
-        retry_count = self.retry_counts.get(story_id, 0)
+        task_id = issue.task_id
+        retry_count = self.retry_counts.get(task_id, 0)
 
         if retry_count >= self.max_retries:
-            print(f"[monitor] {story_id}: max retries ({self.max_retries}) exceeded, marking failed")
-            ap = self.dispatcher.agents.get(story_id)
+            print(f"[monitor] {task_id}: max retries ({self.max_retries}) exceeded, marking failed")
+            ap = self.dispatcher.agents.get(task_id)
             if ap:
                 ap.state = "failed"
-                self.dispatcher.failed.add(story_id)
+                self.dispatcher.failed.add(task_id)
             return False
 
         if issue.issue_type == "process_dead":
-            print(f"[monitor] {story_id}: restarting (attempt {retry_count + 1}/{self.max_retries})")
-            ap = self.dispatcher.agents.get(story_id)
+            print(f"[monitor] {task_id}: restarting (attempt {retry_count + 1}/{self.max_retries})")
+            ap = self.dispatcher.agents.get(task_id)
             if ap:
-                new_ap = self.dispatcher._spawn_agent(ap.story)
-                self.dispatcher.agents[story_id] = new_ap
-                self.retry_counts[story_id] = retry_count + 1
+                new_ap = self.dispatcher._spawn_agent(ap.task)
+                self.dispatcher.agents[task_id] = new_ap
+                self.retry_counts[task_id] = retry_count + 1
                 return True
 
         return False
@@ -156,4 +156,4 @@ def print_health_report(issues: list[HealthIssue]) -> None:
     print(f"[monitor] {len(issues)} health issue(s):")
     for issue in issues:
         icon = "!!" if issue.severity == "critical" else "  "
-        print(f"  {icon} {issue.story_id} ({issue.agent_name}): {issue.issue_type} — {issue.message}")
+        print(f"  {icon} {issue.task_id} ({issue.agent_name}): {issue.issue_type} — {issue.message}")

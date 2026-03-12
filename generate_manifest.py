@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Generate a sprint manifest YAML from Gitea in-sprint issues.
+"""Generate a phase manifest YAML from Gitea issues.
 
 Queries Gitea for open issues with the 'in-sprint' label (or a specified
-milestone) and produces a sprint.yaml suitable for the dispatcher.
+milestone) and produces a phase.yaml suitable for the dispatcher.
 
 Usage:
-    python3 generate_manifest.py tquick/claude-gate --output sprint.yaml
+    python3 generate_manifest.py tquick/claude-gate --output phase.yaml
     python3 generate_manifest.py tquick/claude-gate --milestone 3
     python3 generate_manifest.py tquick/claude-gate --label in-sprint
 """
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from lib.gitea_api import GiteaClient
-from lib.manifest import SprintManifest, Story
+from lib.manifest import PhaseManifest, Task
 
 
 def extract_files(body: str) -> list[str]:
@@ -42,7 +42,7 @@ def extract_files(body: str) -> list[str]:
 
 
 def extract_depends_on(body: str) -> list[str]:
-    """Extract dependency story IDs from issue body.
+    """Extract dependency task IDs from issue body.
 
     Looks for 'depends on: #X, #Y' or a '## Dependencies' section.
     """
@@ -73,18 +73,18 @@ def extract_agent(issue: dict) -> str:
 def issues_to_manifest(
     repo: str,
     issues: list[dict],
-    sprint_name: str = "",
+    phase_name: str = "",
     max_parallel: int = 3,
-) -> SprintManifest:
-    """Convert Gitea issues to a SprintManifest."""
-    stories = []
+) -> PhaseManifest:
+    """Convert Gitea issues to a PhaseManifest."""
+    tasks = []
     for issue in issues:
-        story_id = f"#{issue['number']}"
+        task_id = f"#{issue['number']}"
         body = issue.get("body", "") or ""
 
-        stories.append(
-            Story(
-                id=story_id,
+        tasks.append(
+            Task(
+                id=task_id,
                 title=issue["title"],
                 agent=extract_agent(issue),
                 repo=repo,
@@ -98,26 +98,26 @@ def issues_to_manifest(
         )
 
     # Sort by issue number for deterministic ordering
-    stories.sort(key=lambda s: s.issue or 0)
+    tasks.sort(key=lambda s: s.issue or 0)
 
-    return SprintManifest(
-        sprint=sprint_name or f"{repo.split('/')[-1]}-sprint",
+    return PhaseManifest(
+        phase=phase_name or f"{repo.split('/')[-1]}-phase",
         project=repo.split("/")[-1],
         repo=repo,
-        stories=stories,
+        tasks=tasks,
         max_parallel=max_parallel,
     )
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate sprint manifest from Gitea issues"
+        description="Generate phase manifest from Gitea issues"
     )
     parser.add_argument("repo", help="Repository in owner/name format")
-    parser.add_argument("--output", "-o", default="sprint.yaml", help="Output file")
+    parser.add_argument("--output", "-o", default="phase.yaml", help="Output file")
     parser.add_argument("--label", "-l", default="in-sprint", help="Label to filter by")
     parser.add_argument("--milestone", "-m", type=int, help="Milestone ID to filter by")
-    parser.add_argument("--sprint", "-s", help="Sprint name override")
+    parser.add_argument("--phase", "-s", help="Phase name override")
     parser.add_argument("--max-parallel", type=int, default=3, help="Max parallel agents")
 
     args = parser.parse_args()
@@ -147,13 +147,13 @@ def main():
 
     manifest = issues_to_manifest(
         args.repo, issues,
-        sprint_name=args.sprint,
+        phase_name=args.phase,
         max_parallel=args.max_parallel,
     )
 
     output = Path(args.output)
     manifest.to_yaml(output)
-    print(f"Generated {output} with {len(manifest.stories)} stories")
+    print(f"Generated {output} with {len(manifest.tasks)} tasks")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ Usage (from hooks or scripts):
     from lib.agent_status import AgentStatus
 
     status = AgentStatus("pm")
-    status.update("working", "Planning sprint 2", repo="tquick/meeting-scribe", issue=17)
+    status.update("working", "Planning phase 2", repo="tquick/meeting-scribe", issue=17)
     status.heartbeat()
     status.clear()
 """
