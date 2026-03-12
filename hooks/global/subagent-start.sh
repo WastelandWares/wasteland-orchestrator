@@ -12,12 +12,15 @@
 
 set +e
 
+_WW_JSON="${HOME}/.claude/bin/ww-json-tool.py"
+
 # Read hook input
 HOOK_INPUT=$(cat 2>/dev/null || echo '{}')
-AGENT_TYPE=$(echo "$HOOK_INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('agent_type',''))" 2>/dev/null || echo "unknown")
-AGENT_ID=$(echo "$HOOK_INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('agent_id',''))" 2>/dev/null || echo "")
-SESSION_ID=$(echo "$HOOK_INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null || echo "")
-CWD=$(echo "$HOOK_INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null || echo "")
+eval "$(echo "$HOOK_INPUT" | "$_WW_JSON" hook parse-input --keys agent_type agent_id session_id cwd 2>/dev/null || echo "")"
+AGENT_TYPE="${agent_type:-unknown}"
+AGENT_ID="${agent_id:-}"
+SESSION_ID="${session_id:-}"
+CWD="${cwd:-}"
 
 # Source libraries
 if [[ -f "${HOME}/.claude/lib/init.sh" ]]; then
@@ -62,22 +65,18 @@ CONTEXT_LINES=""
 # Include dispatch context if available
 DISPATCH_CTX_FILE="${HOME}/.claude/state/dispatch-context.json"
 if [[ -f "$DISPATCH_CTX_FILE" ]]; then
-  DISPATCH_SUMMARY=$(python3 -c "
-import json, os
-ctx_file = os.path.expanduser('~/.claude/state/dispatch-context.json')
-with open(ctx_file) as f:
-    ctx = json.load(f)
-# Only include if not consumed or if custom_instructions exist
-if ctx.get('custom_instructions'):
-    print(ctx['custom_instructions'])
-elif ctx.get('briefing_summary'):
-    # Abbreviated version for subagents
-    print(ctx['briefing_summary'][:500])
-" 2>/dev/null || echo "")
-  if [[ -n "$DISPATCH_SUMMARY" ]]; then
+  # Read custom_instructions or briefing_summary for subagent context
+  DISPATCH_INSTRUCTIONS=$("$_WW_JSON" json get \
+    --file "$DISPATCH_CTX_FILE" --key custom_instructions --default "" 2>/dev/null || echo "")
+  if [[ -z "$DISPATCH_INSTRUCTIONS" ]]; then
+    DISPATCH_BRIEFING=$("$_WW_JSON" json get \
+      --file "$DISPATCH_CTX_FILE" --key briefing_summary --default "" 2>/dev/null || echo "")
+    DISPATCH_INSTRUCTIONS="${DISPATCH_BRIEFING:0:500}"
+  fi
+  if [[ -n "$DISPATCH_INSTRUCTIONS" ]]; then
     CONTEXT_LINES+="<parent-context>
 Dispatched by: ${PARENT_AGENT}
-${DISPATCH_SUMMARY}
+${DISPATCH_INSTRUCTIONS}
 </parent-context>
 "
   fi
@@ -92,17 +91,7 @@ Libraries available: agent-status.sh, agent-tx.sh, gitea-api.sh
 </agent-metadata>"
 
 if [[ -n "$CONTEXT_LINES" ]]; then
-  python3 -c "
-import json, sys
-context = sys.stdin.read()
-output = {
-    'hookSpecificOutput': {
-        'hookEventName': 'SubagentStart',
-        'additionalContext': context
-    }
-}
-print(json.dumps(output))
-" <<< "$CONTEXT_LINES"
+  echo "$CONTEXT_LINES" | "$_WW_JSON" hook build-output --event-name "SubagentStart"
 else
   echo '{}'
 fi

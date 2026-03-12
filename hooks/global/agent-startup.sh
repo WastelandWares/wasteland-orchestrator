@@ -17,11 +17,14 @@
 # Any crash = blocked session. Use set +e and exit codes instead.
 set +e
 
+_WW_JSON="${HOME}/.claude/bin/ww-json-tool.py"
+
 # Read hook input from stdin to extract agent_type and session info
 HOOK_INPUT=$(cat 2>/dev/null || echo '{}')
-HOOK_AGENT_TYPE=$(echo "$HOOK_INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('agent_type',''))" 2>/dev/null || echo "")
-HOOK_SESSION_ID=$(echo "$HOOK_INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null || echo "")
-HOOK_CWD=$(echo "$HOOK_INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null || echo "")
+eval "$(echo "$HOOK_INPUT" | "$_WW_JSON" hook parse-input --keys agent_type session_id cwd 2>/dev/null || echo "")"
+HOOK_AGENT_TYPE="${agent_type:-}"
+HOOK_SESSION_ID="${session_id:-}"
+HOOK_CWD="${cwd:-}"
 
 # Ensure init.sh is sourced to load all libraries
 if [[ -f "${HOME}/.claude/lib/init.sh" ]]; then
@@ -39,12 +42,9 @@ if [[ -z "${CLAUDE_AGENT_NAME:-}" ]]; then
   if [[ -n "$HOOK_AGENT_TYPE" ]]; then
     CLAUDE_AGENT_NAME="$HOOK_AGENT_TYPE"
   elif [[ -f "${HOME}/.claude/state/dispatch-context.json" ]]; then
-    CLAUDE_AGENT_NAME=$(python3 -c "
-import json
-with open('${HOME}/.claude/state/dispatch-context.json') as f:
-    ctx = json.load(f)
-print(ctx.get('agent_name', ''))
-" 2>/dev/null || echo "")
+    CLAUDE_AGENT_NAME=$("$_WW_JSON" json get \
+      --file "${HOME}/.claude/state/dispatch-context.json" \
+      --key agent_name --default "" 2>/dev/null || echo "")
   fi
 
   if [[ -z "$CLAUDE_AGENT_NAME" ]]; then
@@ -63,18 +63,12 @@ if [[ -n "${CLAUDE_ENV_FILE:-}" ]]; then
   echo "export CLAUDE_AGENT_NAME=\"${CLAUDE_AGENT_NAME}\"" >> "$CLAUDE_ENV_FILE"
   # Also persist any dispatch-related env vars
   if [[ -f "${HOME}/.claude/state/dispatch-context.json" ]]; then
-    DISPATCH_REPO=$(python3 -c "
-import json
-with open('${HOME}/.claude/state/dispatch-context.json') as f:
-    ctx = json.load(f)
-print(ctx.get('repo', ''))
-" 2>/dev/null || echo "")
-    DISPATCH_ISSUE=$(python3 -c "
-import json
-with open('${HOME}/.claude/state/dispatch-context.json') as f:
-    ctx = json.load(f)
-print(ctx.get('issue_number', ''))
-" 2>/dev/null || echo "")
+    DISPATCH_REPO=$("$_WW_JSON" json get \
+      --file "${HOME}/.claude/state/dispatch-context.json" \
+      --key repo --default "" 2>/dev/null || echo "")
+    DISPATCH_ISSUE=$("$_WW_JSON" json get \
+      --file "${HOME}/.claude/state/dispatch-context.json" \
+      --key issue_number --default "" 2>/dev/null || echo "")
     if [[ -n "$DISPATCH_REPO" ]]; then
       echo "export DISPATCH_REPO=\"${DISPATCH_REPO}\"" >> "$CLAUDE_ENV_FILE"
     fi
@@ -93,115 +87,19 @@ fi
 PINBOARD_CONTEXT=""
 PINBOARD_FILE="${HOME}/.claude/pinboard.json"
 if [[ -f "$PINBOARD_FILE" ]]; then
-  PINBOARD_CONTEXT=$(python3 -c "
-import json, os
-
-pinboard_file = os.path.expanduser('~/.claude/pinboard.json')
-with open(pinboard_file) as f:
-    data = json.load(f)
-
-notes = [p for p in data.get('notes', []) if not p.get('done')]
-if not notes:
-    print('No active pins.')
-else:
-    human_pins = [p for p in notes if p.get('needs_human')]
-    regular_pins = [p for p in notes if not p.get('needs_human')]
-    lines = []
-    if human_pins:
-        lines.append(f'ATTENTION: {len(human_pins)} pin(s) need human response:')
-        for p in human_pins:
-            tag = f' [{p[\"tag\"]}]' if p.get('tag') else ''
-            proj = f' ({p[\"project\"]})' if p.get('project') else ''
-            lines.append(f'  * {p[\"id\"]}: {p[\"text\"][:120]}{tag}{proj}')
-    if regular_pins:
-        lines.append(f'{len(regular_pins)} active pin(s):')
-        for p in regular_pins:
-            tag = f' [{p[\"tag\"]}]' if p.get('tag') else ''
-            proj = f' ({p[\"project\"]})' if p.get('project') else ''
-            lines.append(f'  * {p[\"text\"][:120]}{tag}{proj}')
-    print('\n'.join(lines))
-" 2>/dev/null || echo "")
+  PINBOARD_CONTEXT=$("$_WW_JSON" pin read-context --file "$PINBOARD_FILE" 2>/dev/null || echo "")
 fi
 
 # ── Issue #55: Read dispatch context for dev-leads ────────────────────
 DISPATCH_CONTEXT=""
 DISPATCH_CTX_FILE="${HOME}/.claude/state/dispatch-context.json"
 if [[ -f "$DISPATCH_CTX_FILE" ]]; then
-  DISPATCH_CONTEXT=$(python3 -c "
-import json, os, sys
-
-ctx_file = os.path.expanduser('~/.claude/state/dispatch-context.json')
-with open(ctx_file) as f:
-    ctx = json.load(f)
-
-# Only inject if context is fresh (< 5 minutes old) and not already consumed
-import datetime
-created = ctx.get('created_at', '')
-if created:
-    try:
-        created_dt = datetime.datetime.fromisoformat(created.replace('Z', '+00:00'))
-        now = datetime.datetime.now(datetime.timezone.utc)
-        age_sec = (now - created_dt).total_seconds()
-        if age_sec > 300:
-            print('')
-            sys.exit(0)
-    except:
-        pass
-
-# Build context string
-lines = []
-if ctx.get('briefing_summary'):
-    lines.append('## PM Briefing Summary')
-    lines.append(ctx['briefing_summary'])
-    lines.append('')
-
-if ctx.get('issue_bodies'):
-    lines.append('## Issue Details')
-    for issue in ctx['issue_bodies']:
-        lines.append(f'### #{issue.get(\"number\", \"?\")} — {issue.get(\"title\", \"\")}')
-        lines.append(issue.get('body', ''))
-        labels = issue.get('labels', [])
-        if labels:
-            lines.append(f'Labels: {', '.join(labels)}')
-        lines.append('')
-
-if ctx.get('recent_commits'):
-    lines.append('## Recent Commits')
-    lines.append(ctx['recent_commits'])
-    lines.append('')
-
-if ctx.get('cross_dependencies'):
-    lines.append('## Cross-Project Dependencies')
-    lines.append(ctx['cross_dependencies'])
-    lines.append('')
-
-if ctx.get('phase_plan'):
-    lines.append('## Phase Plan')
-    lines.append(ctx['phase_plan'])
-    lines.append('')
-
-if ctx.get('custom_instructions'):
-    lines.append('## Instructions from PM')
-    lines.append(ctx['custom_instructions'])
-    lines.append('')
-
-print('\n'.join(lines))
-" 2>/dev/null || echo "")
+  DISPATCH_CONTEXT=$("$_WW_JSON" hook read-dispatch-context --file "$DISPATCH_CTX_FILE" 2>/dev/null || echo "")
 
   # Mark the dispatch context as consumed so it doesn't re-inject on resume
-  python3 -c "
-import json, os
-ctx_file = os.path.expanduser('~/.claude/state/dispatch-context.json')
-try:
-    with open(ctx_file) as f:
-        ctx = json.load(f)
-    ctx['consumed'] = True
-    ctx['consumed_by'] = '${CLAUDE_AGENT_NAME}'
-    with open(ctx_file, 'w') as f:
-        json.dump(ctx, f, indent=2)
-except:
-    pass
-" 2>/dev/null || true
+  "$_WW_JSON" dispatch consume-context \
+    --file "$DISPATCH_CTX_FILE" \
+    --agent "${CLAUDE_AGENT_NAME}" 2>/dev/null || true
 fi
 
 # Verify Gitea access (non-fatal, quiet)
@@ -242,19 +140,7 @@ CLAUDE_AGENT_NAME is set in your environment — no need to export it manually.
 </agent-metadata>"
 
 if [[ -n "$ADDITIONAL_CONTEXT" ]]; then
-  # Use python to safely JSON-encode the context string
-  python3 -c "
-import json, sys
-
-context = sys.stdin.read()
-output = {
-    'hookSpecificOutput': {
-        'hookEventName': 'SessionStart',
-        'additionalContext': context
-    }
-}
-print(json.dumps(output))
-" <<< "$ADDITIONAL_CONTEXT"
+  echo "$ADDITIONAL_CONTEXT" | "$_WW_JSON" hook build-output --event-name "SessionStart"
 else
   echo '{}'
 fi
