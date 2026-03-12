@@ -16,15 +16,19 @@ Autonomous agent work mode. When activated (`/cook`), the agent works without in
 **Statusline indicator:** 🔥 COOKING
 
 ### btw (By The Way)
-Non-interrupting message queue used during Cook Mode. When an agent is cooking, incoming user messages are queued as btw items rather than breaking the agent's focus. Messages are tagged with `cook_mode: true` and presented as a batch when cook mode deactivates.
+Two distinct but related uses:
 
-**Origin:** wasteland-orchestrator, cook.sh
+1. **Claude Code built-in (`/btw`):** A native command in recent Claude Code builds. Lets you ask a quick side question without adding to conversation history. The question and answer appear in a dismissible overlay and are ephemeral. Works while Claude is processing. Has full conversation visibility but no tool access. The inverse of a subagent (sees full context but no tools, vs. subagent which has tools but empty context).
+
+2. **WastelandWares Cook Mode queue:** When an agent is cooking, incoming user messages are queued as btw items rather than breaking the agent's focus. Messages are tagged with `cook_mode: true` and presented as a batch when cook mode deactivates.
+
+**Origin (Cook Mode):** wasteland-orchestrator, cook.sh
 **Storage:** `~/.claude/btw-queue.json`
 
 ### Transaction (tx)
 An auditable unit of agent work with declared intent. Every meaningful task is wrapped in `tx_begin` / `tx_end`, with intermediate `tx_action` entries logging significant changes. Transactions record:
 - **Intent** — what the agent plans to do (human-readable)
-- **Justification** — why the work is being done (e.g., "Sprint 1 story #18")
+- **Justification** — why the work is being done (e.g., "Phase 1 task #18")
 - **Actions** — timestamped log of what changed and why
 - **Outcome** — `success`, `partial`, `failed`, or `cancelled`
 
@@ -33,25 +37,52 @@ Transactions feed the dashboard, provide an audit trail, and will integrate with
 **Origin:** wasteland-orchestrator, agent-tx.sh
 **Storage:** `~/.claude/agents/transactions/`
 
-### Sprint
-A focused batch of work across one or more projects with named stories, clear owners, and time-boxed execution. Sprints are named (e.g., "First Light," "Ambitious March") and tracked via Gitea `in-sprint` labels.
+### Phase
+A focused batch of work across one or more projects with named tasks, clear owners, and time-boxed execution. Phases are named (e.g., "First Light," "Ambitious March") and tracked via Gitea `in-phase` labels.
 
-### Story
-A single deliverable within a sprint, mapped to a Gitea issue. Stories have complexity labels (`trivial`, `small`, `medium`, `large`, `epic`) and tier priority (`now`, `next`, `later`, `icebox`).
+> **Note:** We deliberately avoid the term "sprint" and other Scrum/Agile terminology. Those words carry deep associations with two-week dev cycles, velocity tracking, story pointing, and baked-in wait times — concepts that don't apply to how WastelandWares operates. See *Rule 1/137, the fine-task constant.*
 
-### Epic
-A large initiative spanning multiple stories and potentially multiple sprints. Tracked as a Gitea issue with `complexity:epic` label, often serving as a parent tracker (e.g., jarlf-host#1).
+### Task
+An actionable item of work, mapped to a Gitea issue. Tasks have complexity labels (`trivial`, `small`, `medium`, `large`) and tier priority (`now`, `next`, `later`, `icebox`). If a task is large, it should be decomposed into many smaller tasks.
+
+> **Not "story."** Stories imply narrative structure and estimation rituals. A task is simply: something that needs doing, with enough context to do it.
+
+### Idea
+A workshopable item. Ideas should always be captured with the full context around the ideation — what prompted it, who suggested it, adjacent thoughts — and linked to any duplicate or near-duplicate ideas. Ideas are refined into tasks when they're ready for implementation.
+
+> **Tasks vs. Ideas:** Tasks are actionable. Ideas are explorable. An idea becomes a task when it has a clear definition of done.
+
+### Project (scope)
+A large initiative spanning multiple tasks and potentially multiple phases. Tracked as a Gitea issue with the `project` label, often serving as a parent tracker (e.g., jarlf-host#1).
+
+> **Not "epic."** Epics carry Agile baggage — estimation, velocity, burn-down charts. A project is just: a big thing made of smaller things.
 
 ### Tier
-Priority classification for stories and issues:
+Priority classification for tasks and ideas. A degree of abstraction removed from "priority" — lessens the narrative that tasks and ideas can be ordered deterministically.
 | Tier | Meaning |
 |------|---------|
 | **now** | Active priority — work on this immediately |
-| **next** | Queued — work on this after current sprint |
-| **later** | Planned — will be scheduled in a future sprint |
+| **next** | Queued — work on this after current phase |
+| **later** | Planned — will be scheduled in a future phase |
 | **icebox** | Parked — captured but not currently planned |
 
 Nothing is discarded. Every idea gets at minimum an icebox tier.
+
+### Acceptance Test
+*Needs definition.* Thomas flagged that the vocabulary should cover the acceptance test feature — the process by which a task is verified as complete. To be workshopped.
+
+### Banned Terminology (Rule 1/137 — the fine-task constant)
+Scrum and Agile terminology is banned from WastelandWares vocabulary. These words carry associations that cause actual friction with how we work — assumptions about velocity, story pointing, two-week cadences, and deterministic ordering that don't apply here.
+
+| Banned | Replacement | Why |
+|--------|-------------|-----|
+| Sprint | **Phase** | "Sprint" implies fixed time-boxes, velocity tracking, retrospectives |
+| Story | **Task** | "Story" implies estimation rituals and narrative structure |
+| Epic | **Project** | "Epic" implies burn-down charts and hierarchical decomposition |
+| Backlog grooming | **Triage** | Grooming implies a fixed ceremony |
+| Standup | **Check-in** | We don't stand, and there's no fixed schedule |
+| Velocity | *(no replacement)* | We don't measure throughput in points per sprint |
+| Story points | *(no replacement)* | Complexity labels (trivial→large) are sufficient |
 
 ### Branching Model
 ```
@@ -76,6 +107,8 @@ Commit message prefixes used across all repositories:
 | `refactor:` | Code restructuring |
 | `test:` | Test additions/changes |
 | `chore:` | Maintenance tasks |
+| `fun:` | Fun/experimental/creative work — why do any of this if we can't have fun? |
+| `havoc:` | Security adversary finding — Havoc (our red panda) found a vulnerability. Treated as critical. |
 
 ---
 
@@ -164,7 +197,7 @@ Mandatory startup and operational conventions for all agents. Includes: source s
 Agent identity and memory document at `~/.claude/agents/CLAUDE.{name}.md`. Contains the agent's role definition, character bio, working style, performance log, learnings, and project-specific knowledge. Updated by the agent at end of each session — this is how institutional knowledge accumulates across sessions.
 
 ### WOW (WastelandWares Orchestration Workflow)
-The end-to-end pipeline for how work flows through the agent system: intake → triage → sprint planning → dispatch → implementation → review → merge → docs → release. Named to capture the full orchestration lifecycle.
+The end-to-end pipeline for how work flows through the agent system: intake → triage → phase planning → dispatch → implementation → review → merge → docs → release. Named to capture the full orchestration lifecycle.
 
 ### HitL (Human in the Loop)
 Thomas's role in the agent system. Agents operate autonomously but specific actions require human involvement:
@@ -187,13 +220,13 @@ Thomas / contributors
 
 | Name | Role | Scope |
 |------|------|-------|
-| **Elara** | Project Manager | Cross-project intake, triage, sprint planning, backlog management |
+| **Elara** | Project Manager | Cross-project intake, triage, phase planning, backlog management |
 | **Vex** | Security Reviewer | Security audits, threat modeling, credential hygiene |
 | **Glitch** | Mobile Tester | Mobile app testing, device compatibility, edge cases |
-| **Havoc** | White Hat | Penetration testing, vulnerability research, red team exercises |
+| **Havoc** | Red Panda Adversary | Security vulnerability discovery — `havoc:` commits with proof (tests, scripts, docs). Findings published after set time (zero-day style disclosure). Treated as critical issues. |
 | **Pixel** | Mobile UX | Mobile UI/UX design, accessibility, interaction patterns |
 | **Sigil** | Brand Designer | Visual identity, style guides, marketing assets |
-| **Dev Team Lead** | Sprint Coordinator | Per-project implementation, agent dispatch, review cycle |
+| **Dev Team Lead** | Phase Coordinator | Per-project implementation, agent dispatch, review cycle |
 | **Documentation Agent** | Docs Keeper | Changelog, README, CLAUDE.md reconciliation, end-of-sprint docs |
 
 ---
@@ -290,7 +323,17 @@ A Tier 1 extension that tracks the cumulative predicted effects of approved comm
 The umbrella brand for all projects in the ecosystem. Evokes post-apocalyptic resourcefulness — building useful things from whatever is available.
 
 **Domain:** wastelandwares.com
-**Services:** git.wastelandwares.com (Gitea), dungeoncrawler.wastelandwares.com (game), turtles.wastelandwares.com (dev preview)
+
+**Live services:**
+- `git.wastelandwares.com` — Gitea (issue tracking, mirrors)
+- `dungeoncrawler.wastelandwares.com` — Dungeon crawler game
+- `dev.dungeoncrawler.wastelandwares.com` — Dev preview builds
+- `papers.wastelandwares.com` — Whitepapers (OaP, etc.)
+- `turtles.wastelandwares.com` — Dev preview (legacy)
+
+**Coming soon:**
+- `hq.wastelandwares.com` — HQ dashboard
+- `thomas.wastelandwares.com` — Personal/portfolio
 
 ### Projects
 
