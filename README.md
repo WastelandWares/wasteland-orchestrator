@@ -5,6 +5,7 @@ A Claude Code plugin for multi-agent orchestration: status reporting, transactio
 ## What It Does
 
 - **Agent Status Tracking** — Every agent reports what it's doing in real-time via structured status files
+- **Ceremony Automation** — Hooks automatically orchestrate agent initialization (spawn setup, heartbeat, status registration)
 - **Transaction System** — Groups related actions into auditable units with stated intent and justification
 - **Gitea API Library** — Centralized, dual-auth Gitea access (handles Caddy basic auth + Gitea tokens)
 - **Protocol Enforcement** — PreToolUse hooks verify agents follow conventions (no raw curl, worktree isolation, etc.)
@@ -36,15 +37,23 @@ wasteland-orchestrator/
     posttooluse.py       # PostToolUse: heartbeat, tool tracking
     stop.py              # Stop: cleanup status, archive interrupted transactions
   lib/
-    agent_status.py      # Agent status reporting
-    agent_tx.py          # Transaction system
-    gitea_api.py         # Gitea API client with dual-auth
+    agent_status.sh      # Agent status reporting (shell wrapper)
+    agent_status.py      # Agent status reporting (Python)
+    agent_tx.sh          # Transaction system (shell wrapper)
+    agent_tx.py          # Transaction system (Python)
+    gitea_api.sh         # Gitea API client (shell wrapper)
+    gitea_api.py         # Gitea API client (Python)
+  tools/
+    ww-json-tool.py      # JSON processing utility for agent workflows
   skills/
     agent-protocol/
       SKILL.md           # Mandatory protocol documentation
   commands/
     status.md            # /status slash command
     tx.md                # /tx slash command
+  docs/
+    VOCABULARY.md        # Agent protocol terminology guide
+    ARCHITECTURE.md      # System design and data flow diagrams
 ```
 
 ## Protocol Overview
@@ -57,6 +66,12 @@ All agents must:
 5. Update persona files with learnings after each session
 
 See `skills/agent-protocol/SKILL.md` for the full protocol specification.
+
+## Documentation
+
+- **VOCABULARY.md** — Terminology guide for agent roles, states, and workflow concepts
+- **ARCHITECTURE.md** — Visual system design including agent initialization flow and transaction lifecycle
+- **Ceremony Automation** — Hooks automatically initialize agents with proper status tracking and spawn handling
 
 ## Agent States
 
