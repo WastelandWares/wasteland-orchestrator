@@ -32,6 +32,18 @@ from lib.monitor import HealthMonitor, print_health_report
 
 STATUS_DIR = os.path.expanduser("~/.claude/agents/status")
 POLL_INTERVAL = 10  # seconds between status checks
+SCOREBOARD_FILE = "scoreboard.md"
+CLAUDE_BIN = os.path.expanduser("~/.local/bin/claude")
+
+# Map repo slugs to local paths
+REPO_PATHS: dict[str, str] = {
+    "tquick/claude-gate": os.path.expanduser("~/projects/claude-gate"),
+    "tquick/dnd-tools": os.path.expanduser("~/projects/dnd-tools"),
+    "tquick/wasteland-infra": os.path.expanduser("~/projects/wasteland-infra"),
+    "tquick/meeting-scribe": os.path.expanduser("~/projects/meeting-scribe"),
+    "tquick/dungeon-crawler": os.path.expanduser("~/projects/dungeon-crawler"),
+    "tquick/wasteland-orchestrator": os.path.expanduser("~/projects/wasteland-orchestrator"),
+}
 
 
 @dataclass
@@ -56,6 +68,13 @@ class Dispatcher:
         self.completed: set[str] = set()
         self.failed: set[str] = set()
         self._shutdown = False
+
+        # Multi-repo: create per-repo updaters
+        self._gitea_updaters: dict[str, GiteaUpdater] = {}
+        repos = set(s.repo for s in manifest.stories if s.repo)
+        for repo in repos:
+            self._gitea_updaters[repo] = GiteaUpdater(repo)
+        # Legacy single-repo fallback
         self.gitea = GiteaUpdater(manifest.repo) if manifest.repo else None
 
         # Register signal handlers for clean shutdown
@@ -79,11 +98,20 @@ class Dispatcher:
                 except subprocess.TimeoutExpired:
                     ap.process.kill()
 
+    def _resolve_repo_path(self, story: Story) -> str:
+        """Resolve the local filesystem path for a story's repository."""
+        return REPO_PATHS.get(story.repo, os.path.expanduser(f"~/projects/{story.repo.split('/')[-1]}"))
+
     def _build_prompt(self, story: Story) -> str:
-        """Build the prompt for a claude -p agent."""
+        """Build the prompt for a claude -p agent with worktree and PR instructions."""
+        repo_path = self._resolve_repo_path(story)
+        branch_name = f"feat/issue-{story.issue}-{story.title.lower()[:30].replace(' ', '-').rstrip('-')}"
+        worktree_dir = f"{repo_path}/.worktrees/{branch_name}"
+
         parts = [
             f"You are agent '{story.agent}' working on: {story.title}",
             f"Repository: {story.repo}",
+            f"Local repo path: {repo_path}",
         ]
         if story.issue:
             parts.append(f"Gitea issue: #{story.issue}")
@@ -91,30 +119,106 @@ class Dispatcher:
             parts.append(f"Key files: {', '.join(story.files)}")
         if story.prompt:
             parts.append(f"\nTask details:\n{story.prompt}")
-        parts.append(
-            "\nFollow the agent protocol: source ~/.claude/lib/agent-status.sh && "
-            "source ~/.claude/lib/gitea-api.sh && source ~/.claude/lib/agent-tx.sh && "
-            f"export CLAUDE_AGENT_NAME={story.agent}"
-        )
+
+        parts.append(f"""
+
+## MANDATORY WORKFLOW — Follow these steps exactly:
+
+### 1. Worktree Isolation
+You MUST work in an isolated git worktree. Never modify the main working tree.
+```bash
+cd {repo_path}
+git fetch origin
+git worktree add {worktree_dir} -b {branch_name} origin/main
+cd {worktree_dir}
+```
+
+### 2. Do Your Work
+Implement the changes described above. Follow existing code patterns and conventions.
+Use conventional commits: feat:, fix:, docs:, infra:, refactor:, test:, chore:
+
+### 3. Changelog
+Update or create CHANGELOG.md in Keep a Changelog format. Add your changes under [Unreleased].
+
+### 4. Commit and Push
+```bash
+git add -A
+git commit -m "feat: <description>
+
+Closes #{story.issue}
+
+Co-Authored-By: {story.agent} <{story.agent}@wasteland.dev>"
+git push -u origin {branch_name}
+```
+
+### 5. Create Pull Request
+Create a PR using gh or the Gitea API. The PR title should reference the issue.
+```bash
+gh pr create --repo {story.repo} --title "feat: {story.title}" --body "Closes #{story.issue}
+
+## Summary
+<describe changes>
+
+## Test Plan
+<how to verify>
+
+Agent: {story.agent} | Sprint: {self.manifest.sprint}"
+```
+If gh doesn't work with Gitea, use curl with the Gitea API:
+```bash
+source ~/.claude/lib/gitea-api.sh
+gitea_post "repos/{story.repo}/pulls" '{{"title":"feat: {story.title}","head":"{branch_name}","base":"main","body":"Closes #{story.issue}\\n\\nAgent: {story.agent}"}}'
+```
+
+### 6. Request Review
+After creating the PR, add a comment mentioning @claude for automated review:
+```bash
+# If the repo has claude-review action, it triggers on @claude mention
+gitea_post "repos/{story.repo}/issues/<PR_NUMBER>/comments" '{{"body":"@claude please review this PR"}}'
+```
+
+### 7. Agent Protocol
+```bash
+source ~/.claude/lib/agent-status.sh
+source ~/.claude/lib/gitea-api.sh
+source ~/.claude/lib/agent-tx.sh
+export CLAUDE_AGENT_NAME={story.agent}
+agent_status_update "working" "{story.title}" "{story.repo}" {story.issue or 0}
+tx_begin "{story.title}" "Sprint: {self.manifest.sprint}, Issue #{story.issue}" "{story.repo}" {story.issue or 0}
+```
+When done:
+```bash
+tx_end "success" "Brief summary of what was done"
+agent_status_update "idle" "Completed {story.id}"
+```
+""")
         return "\n".join(parts)
 
+    def _get_updater(self, story: Story) -> Optional[GiteaUpdater]:
+        """Get the Gitea updater for a story's repo."""
+        return self._gitea_updaters.get(story.repo) or self.gitea
+
     def _spawn_agent(self, story: Story) -> AgentProcess:
-        """Spawn a single claude -p agent."""
+        """Spawn a single claude -p agent in the story's repo directory."""
         prompt = self._build_prompt(story)
         output_dir = Path("logs")
         output_dir.mkdir(exist_ok=True)
         output_file = str(output_dir / f"{story.id.replace('#', '')}-{story.agent}.log")
 
+        repo_path = self._resolve_repo_path(story)
         cmd = [
-            "claude", "-p", prompt,
+            CLAUDE_BIN, "-p", prompt,
             "--output-format", "text",
+            "--dangerously-skip-permissions",
         ]
 
         print(f"[swarm] Spawning {story.agent} for {story.id}: {story.title}")
+        print(f"[swarm]   repo: {story.repo} -> {repo_path}")
 
-        if self.gitea and not self.dry_run:
+        updater = self._get_updater(story)
+        if updater and not self.dry_run:
             try:
-                self.gitea.on_story_started(story)
+                updater.on_story_started(story)
             except Exception as e:
                 print(f"[swarm] Warning: Gitea update failed: {e}")
 
@@ -122,12 +226,28 @@ class Dispatcher:
             print(f"[swarm]   DRY RUN: would run: claude -p '<prompt>' > {output_file}")
             return AgentProcess(story=story, state="done")
 
+        # Strip CLAUDECODE env var so nested claude -p sessions can launch
+        # Ensure node is on PATH (nvm may not be sourced in subprocess)
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        node_dirs = [
+            os.path.expanduser("~/.nvm/versions/node/v25.1.0/bin"),
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+        ]
+        current_path = env.get("PATH", "")
+        for d in node_dirs:
+            if d not in current_path:
+                current_path = f"{d}:{current_path}"
+        env["PATH"] = current_path
+
         with open(output_file, "w") as out:
             proc = subprocess.Popen(
                 cmd,
                 stdout=out,
                 stderr=subprocess.STDOUT,
-                cwd=os.getcwd(),
+                stdin=subprocess.DEVNULL,
+                cwd=repo_path,
+                env=env,
             )
 
         ap = AgentProcess(
@@ -137,6 +257,10 @@ class Dispatcher:
             state="running",
             output_file=output_file,
         )
+
+        # Update scoreboard
+        self._update_scoreboard()
+
         return ap
 
     def _check_agent(self, story_id: str) -> None:
@@ -148,24 +272,82 @@ class Dispatcher:
         ret = ap.process.poll()
         if ret is not None:
             ap.exit_code = ret
+            updater = self._get_updater(ap.story)
             if ret == 0:
                 ap.state = "done"
                 self.completed.add(story_id)
                 print(f"[swarm] {story_id} completed successfully")
-                if self.gitea:
+                if updater:
                     try:
-                        self.gitea.on_story_completed(ap.story)
+                        updater.on_story_completed(ap.story)
                     except Exception as e:
                         print(f"[swarm] Warning: Gitea close failed: {e}")
             else:
                 ap.state = "failed"
                 self.failed.add(story_id)
                 print(f"[swarm] {story_id} FAILED (exit code {ret})")
-                if self.gitea:
+                if updater:
                     try:
-                        self.gitea.on_story_failed(ap.story, f"exit code {ret}")
+                        updater.on_story_failed(ap.story, f"exit code {ret}")
                     except Exception as e:
                         print(f"[swarm] Warning: Gitea update failed: {e}")
+            self._update_scoreboard()
+
+    def _update_scoreboard(self) -> None:
+        """Write a live scoreboard markdown file."""
+        from datetime import datetime
+
+        lines = [
+            f"# Sprint Scoreboard: {self.manifest.sprint}",
+            f"_Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_\n",
+            f"**Total:** {len(self.manifest.stories)} stories | "
+            f"**Done:** {len(self.completed)} | "
+            f"**Failed:** {len(self.failed)} | "
+            f"**Running:** {self._running_count()} | "
+            f"**Pending:** {len(self.manifest.stories) - len(self.completed) - len(self.failed) - self._running_count()}\n",
+        ]
+
+        # Agent leaderboard
+        agent_stats: dict[str, dict] = {}
+        for story in self.manifest.stories:
+            if story.agent not in agent_stats:
+                agent_stats[story.agent] = {"done": 0, "failed": 0, "running": 0, "pending": 0, "stories": []}
+            state = "pending"
+            if story.id in self.completed:
+                state = "done"
+                agent_stats[story.agent]["done"] += 1
+            elif story.id in self.failed:
+                state = "failed"
+                agent_stats[story.agent]["failed"] += 1
+            elif story.id in self.agents and self.agents[story.id].state == "running":
+                state = "running"
+                agent_stats[story.agent]["running"] += 1
+            else:
+                agent_stats[story.agent]["pending"] += 1
+            agent_stats[story.agent]["stories"].append((story, state))
+
+        lines.append("## Agent Leaderboard\n")
+        lines.append("| Agent | Done | Running | Failed | Pending |")
+        lines.append("|-------|------|---------|--------|---------|")
+        for agent, stats in sorted(agent_stats.items(), key=lambda x: -x[1]["done"]):
+            lines.append(f"| {agent} | {stats['done']} | {stats['running']} | {stats['failed']} | {stats['pending']} |")
+
+        lines.append("\n## Stories\n")
+        lines.append("| Story | Repo | Agent | Status |")
+        lines.append("|-------|------|-------|--------|")
+        for story in self.manifest.stories:
+            if story.id in self.completed:
+                status = "Done"
+            elif story.id in self.failed:
+                status = "FAILED"
+            elif story.id in self.agents and self.agents[story.id].state == "running":
+                status = "Running..."
+            else:
+                status = "Pending"
+            repo_short = story.repo.split("/")[-1] if story.repo else ""
+            lines.append(f"| {story.id}: {story.title[:50]} | {repo_short} | {story.agent} | {status} |")
+
+        Path(SCOREBOARD_FILE).write_text("\n".join(lines) + "\n")
 
     def _ready_stories(self) -> list[Story]:
         """Find stories whose dependencies are met and haven't started."""
@@ -259,12 +441,18 @@ class Dispatcher:
             status = "OK" if ap.state == "done" else ap.state.upper()
             print(f"  {story_id}: {ap.story.title} [{status}]")
 
-        # Post final sprint status to Gitea
-        if self.gitea and not self.dry_run:
-            try:
-                self.gitea.post_sprint_status(self.manifest, self.completed, self.failed)
-            except Exception as e:
-                print(f"[swarm] Warning: Gitea sprint status failed: {e}")
+        # Final scoreboard
+        self._update_scoreboard()
+        print(f"  Scoreboard: {SCOREBOARD_FILE}")
+
+        # Post final sprint status to Gitea (per-repo)
+        if not self.dry_run:
+            for repo, updater in self._gitea_updaters.items():
+                try:
+                    # Filter manifest to this repo's stories for the status post
+                    updater.post_sprint_status(self.manifest, self.completed, self.failed)
+                except Exception as e:
+                    print(f"[swarm] Warning: Gitea sprint status for {repo} failed: {e}")
 
         return len(self.failed) == 0 and not self._shutdown
 
