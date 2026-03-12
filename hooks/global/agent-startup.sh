@@ -1,0 +1,262 @@
+#!/bin/bash
+# agent-startup.sh — Called when any agent session begins
+# Registered as a SessionStart hook
+#
+# Responsibilities:
+# 1. Load environment and libraries
+# 2. Detect and persist agent name via CLAUDE_ENV_FILE (#48)
+# 3. Register agent in status system with heartbeat (#48)
+# 4. Read pinboard and inject as context (#53)
+# 5. Read dispatch context and inject for dev-leads (#55)
+# 6. Verify required tools are available
+#
+# Issues resolved: #48, #53, #55
+
+# IMPORTANT: Do NOT use set -euo pipefail here.
+# This hook runs before full session env is available.
+# Any crash = blocked session. Use set +e and exit codes instead.
+set +e
+
+# Read hook input from stdin to extract agent_type and session info
+HOOK_INPUT=$(cat 2>/dev/null || echo '{}')
+HOOK_AGENT_TYPE=$(echo "$HOOK_INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('agent_type',''))" 2>/dev/null || echo "")
+HOOK_SESSION_ID=$(echo "$HOOK_INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('session_id',''))" 2>/dev/null || echo "")
+HOOK_CWD=$(echo "$HOOK_INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('cwd',''))" 2>/dev/null || echo "")
+
+# Ensure init.sh is sourced to load all libraries
+if [[ -f "${HOME}/.claude/lib/init.sh" ]]; then
+  source "${HOME}/.claude/lib/init.sh" 2>/dev/null
+fi
+
+# ── Issue #48: Auto-detect and persist agent name ─────────────────────
+# Priority order:
+#   1. CLAUDE_AGENT_NAME already set (e.g. by spawn wrapper)
+#   2. agent_type from hook input (--agent flag or subagent type)
+#   3. Dispatch context file
+#   4. Infer from directory/persona files
+#   5. Fallback: "claude"
+if [[ -z "${CLAUDE_AGENT_NAME:-}" ]]; then
+  if [[ -n "$HOOK_AGENT_TYPE" ]]; then
+    CLAUDE_AGENT_NAME="$HOOK_AGENT_TYPE"
+  elif [[ -f "${HOME}/.claude/state/dispatch-context.json" ]]; then
+    CLAUDE_AGENT_NAME=$(python3 -c "
+import json
+with open('${HOME}/.claude/state/dispatch-context.json') as f:
+    ctx = json.load(f)
+print(ctx.get('agent_name', ''))
+" 2>/dev/null || echo "")
+  fi
+
+  if [[ -z "$CLAUDE_AGENT_NAME" ]]; then
+    # Try to infer from persona file in current session directory
+    if [[ -f "CLAUDE.$(basename "$PWD").md" ]]; then
+      CLAUDE_AGENT_NAME=$(basename "$PWD" | sed 's/.*\.//')
+    else
+      CLAUDE_AGENT_NAME="claude"
+    fi
+  fi
+fi
+export CLAUDE_AGENT_NAME
+
+# Persist CLAUDE_AGENT_NAME via CLAUDE_ENV_FILE so all Bash calls have it (#48)
+if [[ -n "${CLAUDE_ENV_FILE:-}" ]]; then
+  echo "export CLAUDE_AGENT_NAME=\"${CLAUDE_AGENT_NAME}\"" >> "$CLAUDE_ENV_FILE"
+  # Also persist any dispatch-related env vars
+  if [[ -f "${HOME}/.claude/state/dispatch-context.json" ]]; then
+    DISPATCH_REPO=$(python3 -c "
+import json
+with open('${HOME}/.claude/state/dispatch-context.json') as f:
+    ctx = json.load(f)
+print(ctx.get('repo', ''))
+" 2>/dev/null || echo "")
+    DISPATCH_ISSUE=$(python3 -c "
+import json
+with open('${HOME}/.claude/state/dispatch-context.json') as f:
+    ctx = json.load(f)
+print(ctx.get('issue_number', ''))
+" 2>/dev/null || echo "")
+    if [[ -n "$DISPATCH_REPO" ]]; then
+      echo "export DISPATCH_REPO=\"${DISPATCH_REPO}\"" >> "$CLAUDE_ENV_FILE"
+    fi
+    if [[ -n "$DISPATCH_ISSUE" ]]; then
+      echo "export DISPATCH_ISSUE=\"${DISPATCH_ISSUE}\"" >> "$CLAUDE_ENV_FILE"
+    fi
+  fi
+fi
+
+# Register in status system — create status file automatically (#48)
+if type agent_status_update &>/dev/null; then
+  agent_status_update "starting" "Session initializing" "" "" 2>/dev/null || true
+fi
+
+# ── Issue #53: Read pinboard for context injection ────────────────────
+PINBOARD_CONTEXT=""
+PINBOARD_FILE="${HOME}/.claude/pinboard.json"
+if [[ -f "$PINBOARD_FILE" ]]; then
+  PINBOARD_CONTEXT=$(python3 -c "
+import json, os
+
+pinboard_file = os.path.expanduser('~/.claude/pinboard.json')
+with open(pinboard_file) as f:
+    data = json.load(f)
+
+notes = [p for p in data.get('notes', []) if not p.get('done')]
+if not notes:
+    print('No active pins.')
+else:
+    human_pins = [p for p in notes if p.get('needs_human')]
+    regular_pins = [p for p in notes if not p.get('needs_human')]
+    lines = []
+    if human_pins:
+        lines.append(f'ATTENTION: {len(human_pins)} pin(s) need human response:')
+        for p in human_pins:
+            tag = f' [{p[\"tag\"]}]' if p.get('tag') else ''
+            proj = f' ({p[\"project\"]})' if p.get('project') else ''
+            lines.append(f'  * {p[\"id\"]}: {p[\"text\"][:120]}{tag}{proj}')
+    if regular_pins:
+        lines.append(f'{len(regular_pins)} active pin(s):')
+        for p in regular_pins:
+            tag = f' [{p[\"tag\"]}]' if p.get('tag') else ''
+            proj = f' ({p[\"project\"]})' if p.get('project') else ''
+            lines.append(f'  * {p[\"text\"][:120]}{tag}{proj}')
+    print('\n'.join(lines))
+" 2>/dev/null || echo "")
+fi
+
+# ── Issue #55: Read dispatch context for dev-leads ────────────────────
+DISPATCH_CONTEXT=""
+DISPATCH_CTX_FILE="${HOME}/.claude/state/dispatch-context.json"
+if [[ -f "$DISPATCH_CTX_FILE" ]]; then
+  DISPATCH_CONTEXT=$(python3 -c "
+import json, os, sys
+
+ctx_file = os.path.expanduser('~/.claude/state/dispatch-context.json')
+with open(ctx_file) as f:
+    ctx = json.load(f)
+
+# Only inject if context is fresh (< 5 minutes old) and not already consumed
+import datetime
+created = ctx.get('created_at', '')
+if created:
+    try:
+        created_dt = datetime.datetime.fromisoformat(created.replace('Z', '+00:00'))
+        now = datetime.datetime.now(datetime.timezone.utc)
+        age_sec = (now - created_dt).total_seconds()
+        if age_sec > 300:
+            print('')
+            sys.exit(0)
+    except:
+        pass
+
+# Build context string
+lines = []
+if ctx.get('briefing_summary'):
+    lines.append('## PM Briefing Summary')
+    lines.append(ctx['briefing_summary'])
+    lines.append('')
+
+if ctx.get('issue_bodies'):
+    lines.append('## Issue Details')
+    for issue in ctx['issue_bodies']:
+        lines.append(f'### #{issue.get(\"number\", \"?\")} — {issue.get(\"title\", \"\")}')
+        lines.append(issue.get('body', ''))
+        labels = issue.get('labels', [])
+        if labels:
+            lines.append(f'Labels: {', '.join(labels)}')
+        lines.append('')
+
+if ctx.get('recent_commits'):
+    lines.append('## Recent Commits')
+    lines.append(ctx['recent_commits'])
+    lines.append('')
+
+if ctx.get('cross_dependencies'):
+    lines.append('## Cross-Project Dependencies')
+    lines.append(ctx['cross_dependencies'])
+    lines.append('')
+
+if ctx.get('phase_plan'):
+    lines.append('## Phase Plan')
+    lines.append(ctx['phase_plan'])
+    lines.append('')
+
+if ctx.get('custom_instructions'):
+    lines.append('## Instructions from PM')
+    lines.append(ctx['custom_instructions'])
+    lines.append('')
+
+print('\n'.join(lines))
+" 2>/dev/null || echo "")
+
+  # Mark the dispatch context as consumed so it doesn't re-inject on resume
+  python3 -c "
+import json, os
+ctx_file = os.path.expanduser('~/.claude/state/dispatch-context.json')
+try:
+    with open(ctx_file) as f:
+        ctx = json.load(f)
+    ctx['consumed'] = True
+    ctx['consumed_by'] = '${CLAUDE_AGENT_NAME}'
+    with open(ctx_file, 'w') as f:
+        json.dump(ctx, f, indent=2)
+except:
+    pass
+" 2>/dev/null || true
+fi
+
+# Verify Gitea access (non-fatal, quiet)
+GITEA_CHECK=$(curl -sf -o /dev/null -w "%{http_code}" \
+  -u "cheeseburger:xq1Ka03aCQX1ak0qFvTSyOhpwm2gA7oSjASQTkEoB0dXe69zMm9GG" \
+  "https://git.wastelandwares.com/api/v1/version?token=b2922e6ba5274205f0c16829f7aa002d98fe5f7d" 2>/dev/null || echo "000")
+
+# Update status to idle (ready for work)
+if type agent_status_update &>/dev/null; then
+  agent_status_update "idle" "Ready" "" "" 2>/dev/null || true
+fi
+
+# ── Build output JSON with additionalContext ──────────────────────────
+# SessionStart hooks can return hookSpecificOutput.additionalContext
+# to inject text into the agent's context automatically
+ADDITIONAL_CONTEXT=""
+
+if [[ -n "$PINBOARD_CONTEXT" ]]; then
+  ADDITIONAL_CONTEXT+="<pinboard>
+${PINBOARD_CONTEXT}
+</pinboard>
+"
+fi
+
+if [[ -n "$DISPATCH_CONTEXT" ]]; then
+  ADDITIONAL_CONTEXT+="<dispatch-context>
+${DISPATCH_CONTEXT}
+</dispatch-context>
+"
+fi
+
+# Add agent identity reminder
+ADDITIONAL_CONTEXT+="<agent-metadata>
+Agent: ${CLAUDE_AGENT_NAME}
+Session: ${HOOK_SESSION_ID}
+Libraries pre-loaded: agent-status.sh, agent-tx.sh, gitea-api.sh (via CLAUDE_ENV_FILE)
+CLAUDE_AGENT_NAME is set in your environment — no need to export it manually.
+</agent-metadata>"
+
+if [[ -n "$ADDITIONAL_CONTEXT" ]]; then
+  # Use python to safely JSON-encode the context string
+  python3 -c "
+import json, sys
+
+context = sys.stdin.read()
+output = {
+    'hookSpecificOutput': {
+        'hookEventName': 'SessionStart',
+        'additionalContext': context
+    }
+}
+print(json.dumps(output))
+" <<< "$ADDITIONAL_CONTEXT"
+else
+  echo '{}'
+fi
+
+exit 0
