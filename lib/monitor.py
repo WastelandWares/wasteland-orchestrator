@@ -83,7 +83,7 @@ class HealthMonitor:
             exit_code = ap.process.returncode
             if exit_code != 0:
                 issues.append(HealthIssue(
-                    story_id=task_id,
+                    task_id=task_id,
                     agent_name=agent_name,
                     issue_type="process_dead",
                     message=f"Process exited with code {exit_code}",
@@ -95,7 +95,7 @@ class HealthMonitor:
         status_file = os.path.join(STATUS_DIR, f"{agent_name}.json")
         if not os.path.exists(status_file):
             issues.append(HealthIssue(
-                story_id=task_id,
+                task_id=task_id,
                 agent_name=agent_name,
                 issue_type="no_status_file",
                 message="No status file found",
@@ -111,7 +111,7 @@ class HealthMonitor:
                 age_sec = (now - hb_dt).total_seconds()
                 if age_sec > self.stale_threshold:
                     issues.append(HealthIssue(
-                        story_id=task_id,
+                        task_id=task_id,
                         agent_name=agent_name,
                         issue_type="stale_heartbeat",
                         message=f"Heartbeat stale for {int(age_sec)}s (threshold: {self.stale_threshold}s)",

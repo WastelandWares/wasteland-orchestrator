@@ -14,9 +14,11 @@ _WW_JSON="${HOME}/.claude/bin/ww-json-tool.py"
 
 # Read hook input
 HOOK_INPUT=$(cat 2>/dev/null || echo '{}')
-eval "$(echo "$HOOK_INPUT" | "$_WW_JSON" hook parse-input --keys agent_type agent_id 2>/dev/null || echo "")"
+eval "$(echo "$HOOK_INPUT" | "$_WW_JSON" hook parse-input --keys agent_type agent_id exit_code outcome 2>/dev/null || echo "")"
 AGENT_TYPE="${agent_type:-unknown}"
 AGENT_ID="${agent_id:-}"
+EXIT_CODE="${exit_code:-1}"
+OUTCOME="${outcome:-}"
 
 # Source libraries
 if [[ -f "${HOME}/.claude/lib/init.sh" ]]; then
@@ -36,7 +38,12 @@ export CLAUDE_AGENT_NAME="sub-${AGENT_TYPE}-${AGENT_ID}"
 
 # Auto tx_end (#54)
 if type tx_end &>/dev/null; then
-  tx_end "success" "Subagent ${AGENT_TYPE} completed" 2>/dev/null || true
+  # Determine outcome based on exit code or outcome field
+  TX_OUTCOME="failed"
+  if [[ "$EXIT_CODE" == "0" ]] || [[ "$OUTCOME" == "success" ]]; then
+    TX_OUTCOME="success"
+  fi
+  tx_end "$TX_OUTCOME" "Subagent ${AGENT_TYPE} completed with exit code ${EXIT_CODE}" 2>/dev/null || true
 fi
 
 # Clear status

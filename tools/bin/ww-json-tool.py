@@ -17,7 +17,6 @@ import json
 import os
 import subprocess
 import sys
-import uuid
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
@@ -43,7 +42,6 @@ def _write_json(path, data):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
-    f.close()
 
 
 # ── json subcommands ────────────────────────────────────────────────────
