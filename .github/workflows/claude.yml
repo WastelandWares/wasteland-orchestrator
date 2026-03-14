@@ -10,6 +10,12 @@ on:
   pull_request_review:
     types: [submitted]
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
 jobs:
   claude:
     uses: WastelandWares/.github/.github/workflows/claude-mention.yml@main
