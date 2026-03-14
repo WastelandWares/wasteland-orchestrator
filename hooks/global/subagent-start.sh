@@ -89,7 +89,7 @@ CONTEXT_LINES+="<agent-metadata>
 Agent: ${CLAUDE_AGENT_NAME} (subagent of ${PARENT_AGENT})
 Transaction started automatically — no need to call tx_begin.
 Use tx_action to log significant changes. tx_end will fire on SubagentStop.
-Libraries available: agent-status.sh, agent-tx.sh, gitea-api.sh
+Libraries available: agent-status.sh, agent-tx.sh
 </agent-metadata>"
 
 if [[ -n "$CONTEXT_LINES" ]]; then

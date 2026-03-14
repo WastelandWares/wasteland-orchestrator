@@ -101,18 +101,6 @@ if [[ -f "$DISPATCH_CTX_FILE" ]]; then
     --agent "${CLAUDE_AGENT_NAME}" 2>/dev/null || true
 fi
 
-# Verify Gitea access (non-fatal, quiet) — use env vars instead of hardcoded credentials
-GITEA_USER="${GITEA_USER:-}"
-GITEA_PASS="${GITEA_PASS:-}"
-GITEA_TOKEN="${GITEA_TOKEN:-}"
-if [[ -n "$GITEA_USER" && -n "$GITEA_PASS" ]]; then
-  GITEA_CHECK=$(curl -sf -o /dev/null -w "%{http_code}" \
-    -u "${GITEA_USER}:${GITEA_PASS}" \
-    "https://git.wastelandwares.com/api/v1/version?token=${GITEA_TOKEN}" 2>/dev/null || echo "000")
-else
-  GITEA_CHECK="000"
-fi
-
 # Update status to idle (ready for work)
 if type agent_status_update &>/dev/null; then
   agent_status_update "idle" "Ready" "" "" 2>/dev/null || true
@@ -141,7 +129,7 @@ fi
 ADDITIONAL_CONTEXT+="<agent-metadata>
 Agent: ${CLAUDE_AGENT_NAME}
 Session: ${HOOK_SESSION_ID}
-Libraries pre-loaded: agent-status.sh, agent-tx.sh, gitea-api.sh (via CLAUDE_ENV_FILE)
+Libraries pre-loaded: agent-status.sh, agent-tx.sh (via CLAUDE_ENV_FILE)
 CLAUDE_AGENT_NAME is set in your environment — no need to export it manually.
 </agent-metadata>"
 

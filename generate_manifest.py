@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
-"""Generate a phase manifest YAML from Gitea issues.
+"""Generate a phase manifest YAML from issue data.
 
-Queries Gitea for open issues with the 'in-phase' label (or a specified
-milestone) and produces a phase.yaml suitable for the dispatcher.
+Provides helper functions for parsing issue bodies into manifest tasks.
+The original Gitea integration has been removed. Provide a YAML manifest
+directly or use a different issue source.
 
 Usage:
-    python3 generate_manifest.py tquick/claude-gate --output phase.yaml
-    python3 generate_manifest.py tquick/claude-gate --milestone 3
-    python3 generate_manifest.py tquick/claude-gate --label in-phase
+    python3 generate_manifest.py  # prints removal notice
 """
 
 from __future__ import annotations
 
-import argparse
 import re
 import sys
-from pathlib import Path
 
-from lib.gitea_api import GiteaClient
 from lib.manifest import PhaseManifest, Task
 
 
@@ -76,7 +72,7 @@ def issues_to_manifest(
     phase_name: str = "",
     max_parallel: int = 3,
 ) -> PhaseManifest:
-    """Convert Gitea issues to a PhaseManifest."""
+    """Convert issue dicts to a PhaseManifest."""
     tasks = []
     for issue in issues:
         task_id = f"#{issue['number']}"
@@ -110,50 +106,16 @@ def issues_to_manifest(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Generate phase manifest from Gitea issues"
+    print(
+        "Gitea integration removed. To create a sprint manifest manually,\n"
+        "use sprint.yaml as a template or see the manifest format documented\n"
+        "in README.md under 'Manifest Format'. Helper functions in this\n"
+        "module (extract_files, extract_depends_on, issues_to_manifest)\n"
+        "remain available for programmatic manifest generation from any\n"
+        "issue source.",
+        file=sys.stderr,
     )
-    parser.add_argument("repo", help="Repository in owner/name format")
-    parser.add_argument("--output", "-o", default="phase.yaml", help="Output file")
-    parser.add_argument("--label", "-l", default="in-phase", help="Label to filter by")
-    parser.add_argument("--milestone", "-m", type=int, help="Milestone ID to filter by")
-    parser.add_argument("--phase", "-s", help="Phase name override")
-    parser.add_argument("--max-parallel", type=int, default=3, help="Max parallel agents")
-
-    args = parser.parse_args()
-
-    gitea = GiteaClient()
-
-    # Fetch issues
-    params = {"state": "open", "limit": "50"}
-    if args.milestone:
-        params["milestones"] = str(args.milestone)
-
-    issues = gitea.list_issues(args.repo, state="open", limit=50)
-    if not isinstance(issues, list):
-        print(f"Error fetching issues: {issues}", file=sys.stderr)
-        sys.exit(1)
-
-    # Filter by label if specified and no milestone
-    if args.label and not args.milestone:
-        issues = [
-            i for i in issues
-            if any(l.get("name") == args.label for l in i.get("labels", []))
-        ]
-
-    if not issues:
-        print(f"No matching issues found in {args.repo}", file=sys.stderr)
-        sys.exit(1)
-
-    manifest = issues_to_manifest(
-        args.repo, issues,
-        phase_name=args.phase,
-        max_parallel=args.max_parallel,
-    )
-
-    output = Path(args.output)
-    manifest.to_yaml(output)
-    print(f"Generated {output} with {len(manifest.tasks)} tasks")
+    sys.exit(1)
 
 
 if __name__ == "__main__":

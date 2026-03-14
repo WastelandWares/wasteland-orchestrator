@@ -693,24 +693,6 @@ def cmd_dispatch_write_context(args):
     if args.instructions:
         ctx["custom_instructions"] = args.instructions
 
-    if args.issue and args.repo:
-        import urllib.request
-        api_url = args.gitea_api_url or os.environ.get("GITEA_API_URL", "https://git.wastelandwares.com/api/v1")
-        token = args.gitea_token or os.environ.get("GITEA_API_TOKEN", "")
-        try:
-            url = f"{api_url}/repos/{args.repo}/issues/{args.issue}?token={token}"
-            req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                issue = json.loads(resp.read())
-            ctx["issue_bodies"] = [{
-                "number": issue["number"],
-                "title": issue["title"],
-                "body": issue.get("body", ""),
-                "labels": [l["name"] for l in issue.get("labels", [])],
-            }]
-        except Exception:
-            pass
-
     project_name = args.repo.split("/")[-1] if args.repo else ""
     if project_name:
         project_dir = os.path.expanduser(f"~/projects/{project_name}")
@@ -1216,8 +1198,6 @@ def main():
     p.add_argument("--issue", default="")
     p.add_argument("--briefing", default="")
     p.add_argument("--instructions", default="")
-    p.add_argument("--gitea-api-url", default="")
-    p.add_argument("--gitea-token", default="")
     p.set_defaults(func=cmd_dispatch_write_context)
 
     p = disp_sub.add_parser("consume-context", help="Mark context consumed")

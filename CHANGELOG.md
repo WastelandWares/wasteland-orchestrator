@@ -16,8 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Terminology Update** — Replaced agile terminology across codebase with clearer workflow descriptions ([#52](https://github.com/WastelandWares/wasteland-orchestrator/issues/52))
 - **Python Tool Extraction** — Moved inline Python scripts from shell scripts into dedicated `ww-json-tool.py` for better maintainability and testability ([#62](https://github.com/WastelandWares/wasteland-orchestrator/issues/62))
 
-### Fixed
-- Hook enforcement now properly validates Gitea API usage patterns across all agent types
+### Removed
+- Gitea integration — all Gitea API libraries, hooks, and references removed
 
 ## [0.1.0] - 2026-02-28
 
@@ -25,7 +25,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release
 - Agent status tracking system with real-time reporting
 - Transaction system for auditable action groups
-- Gitea API library with dual-auth support (Caddy basic auth + Gitea tokens)
 - PreToolUse and PostToolUse hooks for protocol enforcement
 - Agent protocol specification
 - Dashboard-ready status files and transaction logs

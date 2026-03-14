@@ -38,12 +38,12 @@ Transactions feed the dashboard, provide an audit trail, and will integrate with
 **Storage:** `~/.claude/agents/transactions/`
 
 ### Phase
-A focused batch of work across one or more projects with named tasks, clear owners, and time-boxed execution. Phases are named (e.g., "First Light," "Ambitious March") and tracked via Gitea `in-phase` labels.
+A focused batch of work across one or more projects with named tasks, clear owners, and time-boxed execution. Phases are named (e.g., "First Light," "Ambitious March").
 
 > **Note:** We deliberately avoid the term "sprint" and other Scrum/Agile terminology. Those words carry deep associations with two-week dev cycles, velocity tracking, story pointing, and baked-in wait times — concepts that don't apply to how WastelandWares operates. See *Rule 1/137, the fine-task constant.*
 
 ### Task
-An actionable item of work, mapped to a Gitea issue. Tasks have complexity labels (`trivial`, `small`, `medium`, `large`) and tier priority (`now`, `next`, `later`, `icebox`). If a task is large, it should be decomposed into many smaller tasks.
+An actionable item of work. Tasks have complexity labels (`trivial`, `small`, `medium`, `large`) and tier priority (`now`, `next`, `later`, `icebox`). If a task is large, it should be decomposed into many smaller tasks.
 
 > **Not "story."** Stories imply narrative structure and estimation rituals. A task is simply: something that needs doing, with enough context to do it.
 
@@ -53,7 +53,7 @@ A workshopable item. Ideas should always be captured with the full context aroun
 > **Tasks vs. Ideas:** Tasks are actionable. Ideas are explorable. An idea becomes a task when it has a clear definition of done.
 
 ### Project (scope)
-A large initiative spanning multiple tasks and potentially multiple phases. Tracked as a Gitea issue with the `project` label, often serving as a parent tracker (e.g., jarlf-host#1).
+A large initiative spanning multiple tasks and potentially multiple phases, often serving as a parent tracker (e.g., jarlf-host#1).
 
 > **Not "epic."** Epics carry Agile baggage — estimation, velocity, burn-down charts. A project is just: a big thing made of smaller things.
 
@@ -170,13 +170,6 @@ System for launching sub-agents as independent processes. Uses a file-based mess
 **Origin:** wasteland-orchestrator, dispatch.sh
 **Storage:** `~/.claude/dispatch/{queue,active,done,results}/`
 
-### Gitea API Helpers
-Shared shell library (`gitea-api.sh`) wrapping all Gitea REST API calls. Agents must never use raw `curl` to Gitea — the library handles dual-auth (Caddy basic auth + Gitea API token), temp-file JSON bodies, and centralized URL/token management.
-
-**Functions:** `gitea_get`, `gitea_post`, `gitea_patch`, `gitea_put`, `gitea_delete`, `gitea_create_issue`
-
-**Origin:** wasteland-orchestrator, gitea-api.sh
-
 ### Briefing
 Auto-generated session context provided to agents at startup. Includes recent activity, active pins, and relevant project state. Delivered by the spawn script before the agent's Claude session begins.
 
@@ -188,7 +181,7 @@ GitHub Actions workflow that runs automated code review on PRs. Deployed across 
 ## Agent System
 
 ### Agent Protocol
-Mandatory startup and operational conventions for all agents. Includes: source status/gitea/tx libraries → set agent name → report idle → read pinboard → wrap work in transactions → update persona file with learnings → clear status on exit.
+Mandatory startup and operational conventions for all agents. Includes: source status/tx libraries → set agent name → report idle → read pinboard → wrap work in transactions → update persona file with learnings → clear status on exit.
 
 **Origin:** wasteland-orchestrator, `skills/agent-protocol/agent-protocol.md`
 **Enforced by:** Hooks verify compliance
@@ -291,7 +284,7 @@ Not a boundary or perimeter (those imply you can draw a line between "inside" an
 
 The security plane concept explicitly rejects **complacency language** — terms like "air-gapped," "firewalled," and "sandboxed" that create false confidence by implying binary safe/unsafe states. Opacity is a *spectrum*, not a boolean.
 
-**Origin:** Thomas Quick, Gitea issue comment (wasteland-orchestrator #36)
+**Origin:** Thomas Quick, issue comment (wasteland-orchestrator #36)
 
 ### Complacency Language
 Terms like "air-gapped," "firewalled," "sandboxed" that imply binary security states (safe/unsafe) when the reality is a gradient. OaP explicitly rejects this framing — the policy response is calibrated to the *degree* of opacity rather than a claimed security state. Language that makes you feel safe is often language that makes you unsafe.
@@ -325,7 +318,6 @@ The umbrella brand for all projects in the ecosystem. Evokes post-apocalyptic re
 **Domain:** wastelandwares.com
 
 **Live services:**
-- `git.wastelandwares.com` — Gitea (issue tracking, mirrors)
 - `dungeoncrawler.wastelandwares.com` — Dungeon crawler game
 - `dev.dungeoncrawler.wastelandwares.com` — Dev preview builds
 - `papers.wastelandwares.com` — Whitepapers (OaP, etc.)
@@ -372,7 +364,7 @@ Commercial product: Android biometric authentication bridged to macOS + remote s
 | **JARLF** | Just a Really Long Finger | Android→macOS biometric bridge product |
 | **PM** | Project Manager | Elara's role |
 | **SDK** | Software Development Kit | Claude Agent SDK |
-| **CI/CD** | Continuous Integration / Continuous Deployment | GitHub Actions + Gitea runners |
+| **CI/CD** | Continuous Integration / Continuous Deployment | GitHub Actions |
 
 ---
 
