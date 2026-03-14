@@ -362,7 +362,7 @@ graph TD
 | File | Description |
 |------|-------------|
 | `swarm.py` | Sprint dispatcher — reads manifest, builds DAG, spawns `claude -p` agents, monitors health |
-| `generate_manifest.py` | Provides helper functions for parsing issues into `sprint.yaml` manifests |
+| `generate_manifest.py` | Provides helper functions for parsing issues into `sprint.yaml` manifests (CLI mode prints migration guidance; see `sprint.yaml` and CLAUDE.md for manifest format) |
 | `sprint.yaml` | Sprint manifest — stories, agents, dependencies, max parallelism |
 
 ### Plugin Infrastructure

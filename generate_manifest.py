@@ -109,8 +109,12 @@ def issues_to_manifest(
 
 def main():
     print(
-        "Gitea integration removed. Provide a YAML manifest directly "
-        "or use a different issue source.",
+        "Gitea integration removed. To create a sprint manifest manually,\n"
+        "use sprint.yaml as a template or see the manifest format documented\n"
+        "in CLAUDE.md under 'Manifest Format'. Helper functions in this\n"
+        "module (extract_files, extract_depends_on, issues_to_manifest)\n"
+        "remain available for programmatic manifest generation from any\n"
+        "issue source.",
         file=sys.stderr,
     )
     sys.exit(1)
