@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Generate a phase manifest YAML from Gitea issues.
 
-Queries Gitea for open issues with the 'in-sprint' label (or a specified
+Queries Gitea for open issues with the 'in-phase' label (or a specified
 milestone) and produces a phase.yaml suitable for the dispatcher.
 
 Usage:
     python3 generate_manifest.py tquick/claude-gate --output phase.yaml
     python3 generate_manifest.py tquick/claude-gate --milestone 3
-    python3 generate_manifest.py tquick/claude-gate --label in-sprint
+    python3 generate_manifest.py tquick/claude-gate --label in-phase
 """
 
 from __future__ import annotations
@@ -115,7 +115,7 @@ def main():
     )
     parser.add_argument("repo", help="Repository in owner/name format")
     parser.add_argument("--output", "-o", default="phase.yaml", help="Output file")
-    parser.add_argument("--label", "-l", default="in-sprint", help="Label to filter by")
+    parser.add_argument("--label", "-l", default="in-phase", help="Label to filter by")
     parser.add_argument("--milestone", "-m", type=int, help="Milestone ID to filter by")
     parser.add_argument("--phase", "-s", help="Phase name override")
     parser.add_argument("--max-parallel", type=int, default=3, help="Max parallel agents")

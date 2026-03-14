@@ -21,10 +21,9 @@ _WW_JSON="${HOME}/.claude/bin/ww-json-tool.py"
 
 # Read hook input from stdin to extract agent_type and session info
 HOOK_INPUT=$(cat 2>/dev/null || echo '{}')
-eval "$(echo "$HOOK_INPUT" | "$_WW_JSON" hook parse-input --keys agent_type session_id cwd 2>/dev/null || echo "")"
-HOOK_AGENT_TYPE="${agent_type:-}"
-HOOK_SESSION_ID="${session_id:-}"
-HOOK_CWD="${cwd:-}"
+HOOK_AGENT_TYPE="$(echo "$HOOK_INPUT" | "$_WW_JSON" json stdin-key --key agent_type --default "" 2>/dev/null || echo "")"
+HOOK_SESSION_ID="$(echo "$HOOK_INPUT" | "$_WW_JSON" json stdin-key --key session_id --default "" 2>/dev/null || echo "")"
+HOOK_CWD="$(echo "$HOOK_INPUT" | "$_WW_JSON" json stdin-key --key cwd --default "" 2>/dev/null || echo "")"
 
 # Ensure init.sh is sourced to load all libraries
 if [[ -f "${HOME}/.claude/lib/init.sh" ]]; then

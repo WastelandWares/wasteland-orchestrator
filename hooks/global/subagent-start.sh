@@ -16,11 +16,10 @@ _WW_JSON="${HOME}/.claude/bin/ww-json-tool.py"
 
 # Read hook input
 HOOK_INPUT=$(cat 2>/dev/null || echo '{}')
-eval "$(echo "$HOOK_INPUT" | "$_WW_JSON" hook parse-input --keys agent_type agent_id session_id cwd 2>/dev/null || echo "")"
-AGENT_TYPE="${agent_type:-unknown}"
-AGENT_ID="${agent_id:-}"
-SESSION_ID="${session_id:-}"
-CWD="${cwd:-}"
+AGENT_TYPE="$(echo "$HOOK_INPUT" | "$_WW_JSON" json stdin-key --key agent_type --default "unknown" 2>/dev/null || echo "unknown")"
+AGENT_ID="$(echo "$HOOK_INPUT" | "$_WW_JSON" json stdin-key --key agent_id --default "" 2>/dev/null || echo "")"
+SESSION_ID="$(echo "$HOOK_INPUT" | "$_WW_JSON" json stdin-key --key session_id --default "" 2>/dev/null || echo "")"
+CWD="$(echo "$HOOK_INPUT" | "$_WW_JSON" json stdin-key --key cwd --default "" 2>/dev/null || echo "")"
 
 # Source libraries
 if [[ -f "${HOME}/.claude/lib/init.sh" ]]; then
@@ -42,12 +41,15 @@ case "$AGENT_TYPE" in
   *)
     # Real subagent (dev-lead, test-agent, etc.) — start a transaction
     if type tx_begin &>/dev/null; then
-      # Detect repo from cwd
+      # Detect repo from cwd using full remote URL to extract owner/name
       REPO=""
       if [[ -n "$CWD" ]]; then
-        REPO=$(cd "$CWD" 2>/dev/null && git remote get-url origin 2>/dev/null | sed 's|.*/||;s|\.git$||' || echo "")
-        if [[ -n "$REPO" ]]; then
-          REPO="tquick/$REPO"
+        REMOTE_URL=$(cd "$CWD" 2>/dev/null && git remote get-url origin 2>/dev/null || echo "")
+        if [[ -n "$REMOTE_URL" ]]; then
+          # Extract owner/name from remote URL (handles both HTTPS and SSH formats)
+          # e.g. https://github.com/owner/repo.git -> owner/repo
+          # e.g. git@github.com:owner/repo.git -> owner/repo
+          REPO=$(echo "$REMOTE_URL" | sed -E 's|.*[:/]([^/]+/[^/]+?)(\.git)?$|\1|')
         fi
       fi
 

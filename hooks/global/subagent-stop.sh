@@ -14,11 +14,10 @@ _WW_JSON="${HOME}/.claude/bin/ww-json-tool.py"
 
 # Read hook input
 HOOK_INPUT=$(cat 2>/dev/null || echo '{}')
-eval "$(echo "$HOOK_INPUT" | "$_WW_JSON" hook parse-input --keys agent_type agent_id exit_code outcome 2>/dev/null || echo "")"
-AGENT_TYPE="${agent_type:-unknown}"
-AGENT_ID="${agent_id:-}"
-EXIT_CODE="${exit_code:-1}"
-OUTCOME="${outcome:-}"
+AGENT_TYPE="$(echo "$HOOK_INPUT" | "$_WW_JSON" json stdin-key --key agent_type --default "unknown" 2>/dev/null || echo "unknown")"
+AGENT_ID="$(echo "$HOOK_INPUT" | "$_WW_JSON" json stdin-key --key agent_id --default "" 2>/dev/null || echo "")"
+EXIT_CODE="$(echo "$HOOK_INPUT" | "$_WW_JSON" json stdin-key --key exit_code --default "1" 2>/dev/null || echo "1")"
+OUTCOME="$(echo "$HOOK_INPUT" | "$_WW_JSON" json stdin-key --key outcome --default "" 2>/dev/null || echo "")"
 
 # Source libraries
 if [[ -f "${HOME}/.claude/lib/init.sh" ]]; then
