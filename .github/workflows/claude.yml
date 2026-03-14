@@ -18,5 +18,5 @@ permissions:
 
 jobs:
   claude:
-    uses: WastelandWares/.github/.github/workflows/claude-mention.yml@main
+    uses: WastelandWares/.github/.github/workflows/claude-mention.yml@73742989dc1b5cef5006500be867a7ec4ba302d9
     secrets: inherit

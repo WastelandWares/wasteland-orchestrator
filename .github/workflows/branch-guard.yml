@@ -10,4 +10,6 @@ permissions:
 
 jobs:
   guard:
-    uses: WastelandWares/.github/.github/workflows/branch-guard.yml@main
+    # Enforces _dev-first branching: blocks PRs from feature branches directly to main.
+    # Feature branches must target _dev; only _dev may target main.
+    uses: WastelandWares/.github/.github/workflows/branch-guard.yml@73742989dc1b5cef5006500be867a7ec4ba302d9
