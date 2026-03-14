@@ -53,11 +53,11 @@ class PhaseManifest:
         with open(path) as f:
             data = yaml.safe_load(f)
 
-        if not data or "phase" not in data:
-            raise ValueError(f"Invalid manifest: missing 'phase' key in {path}")
+        if not data or ("phase" not in data and "sprint" not in data):
+            raise ValueError(f"Invalid manifest: missing 'phase' or 'sprint' key in {path}")
 
         tasks = []
-        for s in data.get("tasks", []):
+        for s in data.get("tasks", data.get("stories", [])):
             tasks.append(
                 Task(
                     id=s["id"],
@@ -74,7 +74,7 @@ class PhaseManifest:
             )
 
         return cls(
-            phase=data["phase"],
+            phase=data.get("phase") or data.get("sprint", ""),
             project=data.get("project", ""),
             repo=data.get("repo", ""),
             tasks=tasks,
