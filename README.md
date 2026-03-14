@@ -455,7 +455,7 @@ claude plugin add wasteland-orchestrator
 
 ### Manual
 ```bash
-git clone https://github.com/severeon/wasteland-orchestrator.git
+git clone https://github.com/WastelandWares/wasteland-orchestrator.git
 # Add to your Claude Code project's plugin configuration
 ```
 

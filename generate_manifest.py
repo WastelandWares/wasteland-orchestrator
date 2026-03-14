@@ -11,10 +11,8 @@ Usage:
 
 from __future__ import annotations
 
-import argparse
 import re
 import sys
-from pathlib import Path
 
 from lib.manifest import PhaseManifest, Task
 
@@ -111,7 +109,7 @@ def main():
     print(
         "Gitea integration removed. To create a sprint manifest manually,\n"
         "use sprint.yaml as a template or see the manifest format documented\n"
-        "in CLAUDE.md under 'Manifest Format'. Helper functions in this\n"
+        "in README.md under 'Manifest Format'. Helper functions in this\n"
         "module (extract_files, extract_depends_on, issues_to_manifest)\n"
         "remain available for programmatic manifest generation from any\n"
         "issue source.",
