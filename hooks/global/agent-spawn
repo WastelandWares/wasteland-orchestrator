@@ -1,0 +1,144 @@
+#!/bin/bash
+# agent-spawn — Wrapper to launch Claude agent sessions with metadata pre-set
+#
+# Issue #48: Enforce agent metadata via spawn tooling
+#
+# This script:
+# 1. Sets CLAUDE_AGENT_NAME before the session starts
+# 2. Creates the status file immediately (not after agent's first turn)
+# 3. Writes dispatch context for the agent to consume (#55)
+# 4. Launches claude with proper --agent flag
+#
+# Usage:
+#   agent-spawn --agent=dev-lead --project=dnd-tools [--issue=8] [--context="briefing text"]
+#   agent-spawn --agent=codsworth --project=meeting-scribe --issue=24
+#   agent-spawn --agent=pm  # No project needed for PM
+#
+# All flags after -- are passed directly to claude CLI.
+
+set -euo pipefail
+
+# ── Parse arguments ──
+AGENT_NAME=""
+PROJECT=""
+ISSUE=""
+CONTEXT=""
+BRIEFING=""
+REPO_OWNER="tquick"
+EXTRA_CLAUDE_ARGS=()
+PASS_THROUGH=false
+
+for arg in "$@"; do
+  if [[ "$PASS_THROUGH" == "true" ]]; then
+    EXTRA_CLAUDE_ARGS+=("$arg")
+    continue
+  fi
+  case "$arg" in
+    --agent=*)    AGENT_NAME="${arg#--agent=}" ;;
+    --project=*)  PROJECT="${arg#--project=}" ;;
+    --issue=*)    ISSUE="${arg#--issue=}" ;;
+    --context=*)  CONTEXT="${arg#--context=}" ;;
+    --briefing=*) BRIEFING="${arg#--briefing=}" ;;
+    --)           PASS_THROUGH=true ;;
+    --help|-h)
+      echo "Usage: agent-spawn --agent=NAME --project=PROJECT [--issue=N] [--context=TEXT] [--briefing=FILE]"
+      echo ""
+      echo "Options:"
+      echo "  --agent=NAME      Agent persona name (required)"
+      echo "  --project=PROJECT Project directory name under ~/projects/"
+      echo "  --issue=N         Focus issue number"
+      echo "  --context=TEXT    Custom context/instructions to inject"
+      echo "  --briefing=FILE   Path to briefing file to include"
+      echo "  --                Everything after this is passed to claude CLI"
+      exit 0 ;;
+    *)
+      echo "Unknown argument: $arg" >&2
+      echo "Run 'agent-spawn --help' for usage." >&2
+      exit 1 ;;
+  esac
+done
+
+if [[ -z "$AGENT_NAME" ]]; then
+  echo "Error: --agent=NAME is required" >&2
+  exit 1
+fi
+
+# ── Set up environment BEFORE launching claude ──
+
+# 1. Export agent name so the SessionStart hook picks it up
+export CLAUDE_AGENT_NAME="$AGENT_NAME"
+
+# 2. Source libraries for status/tx
+source "${HOME}/.claude/lib/init.sh" 2>/dev/null || true
+
+# 3. Create status file immediately (#48)
+if type agent_status_update &>/dev/null; then
+  REPO_REF=""
+  [[ -n "$PROJECT" ]] && REPO_REF="${REPO_OWNER}/${PROJECT}"
+  ISSUE_REF="${ISSUE:-}"
+  agent_status_update "starting" "Spawning: ${AGENT_NAME}" "$REPO_REF" "$ISSUE_REF" 2>/dev/null || true
+fi
+
+# 4. Write dispatch context (#55)
+DISPATCH_CTX_FILE="${HOME}/.claude/state/dispatch-context.json"
+mkdir -p "${HOME}/.claude/state"
+
+# Export vars for Python script to use
+export AGENT_NAME PROJECT ISSUE CONTEXT BRIEFING REPO_OWNER DISPATCH_CTX_FILE
+
+python3 << 'PYTHON_EOF'
+import json, subprocess, os, datetime
+
+ctx = {
+    'agent_name': os.environ.get('AGENT_NAME', ''),
+    'project': os.environ.get('PROJECT', ''),
+    'repo': f"{os.environ.get('REPO_OWNER', 'tquick')}/{os.environ.get('PROJECT', '')}" if os.environ.get('PROJECT') else '',
+    'issue_number': os.environ.get('ISSUE') if os.environ.get('ISSUE') else None,
+    'created_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    'created_by': os.environ.get('CLAUDE_AGENT_NAME', 'thomas'),
+    'consumed': False,
+}
+
+# Include briefing if provided
+briefing_path = os.environ.get('BRIEFING', '')
+if briefing_path and os.path.isfile(briefing_path):
+    with open(briefing_path) as f:
+        ctx['briefing_summary'] = f.read()[:5000]
+
+# Include custom instructions
+custom = os.environ.get('CONTEXT', '')
+if custom:
+    ctx['custom_instructions'] = custom
+
+# Include recent commits for the project
+if os.environ.get('PROJECT'):
+    project_dir = os.path.expanduser(f"~/projects/{os.environ.get('PROJECT')}")
+    if os.path.isdir(project_dir):
+        try:
+            result = subprocess.run(
+                ['git', 'log', '--oneline', '-15'],
+                capture_output=True, text=True, timeout=5,
+                cwd=project_dir
+            )
+            if result.returncode == 0:
+                ctx['recent_commits'] = result.stdout.strip()
+        except:
+            pass
+
+with open(os.environ.get('DISPATCH_CTX_FILE', ''), 'w') as f:
+    json.dump(ctx, f, indent=2)
+PYTHON_EOF
+ 2>/dev/null || true
+
+# ── Resolve project directory ──
+LAUNCH_DIR="${HOME}/projects"
+if [[ -n "$PROJECT" ]]; then
+  PROJECT_DIR="${HOME}/projects/${PROJECT}"
+  if [[ -d "$PROJECT_DIR" ]]; then
+    LAUNCH_DIR="$PROJECT_DIR"
+  fi
+fi
+
+# ── Launch claude ──
+cd "$LAUNCH_DIR"
+exec claude --agent "$AGENT_NAME" "${EXTRA_CLAUDE_ARGS[@]}"

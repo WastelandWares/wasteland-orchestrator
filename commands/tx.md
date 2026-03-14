@@ -13,7 +13,7 @@ Manage work transactions for audit trail and dashboard visibility.
 Start a new transaction:
 ```bash
 source ~/.claude/lib/agent-tx.sh
-tx_begin "Implementing feature X" "Sprint 1 story #42" "tquick/repo" 42
+tx_begin "Implementing feature X" "Phase 1 task #42" "tquick/repo" 42
 ```
 
 ### `/tx action <what> | <why>`

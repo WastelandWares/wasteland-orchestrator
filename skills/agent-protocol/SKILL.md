@@ -82,7 +82,7 @@ gitea_create_issue "tquick/meeting-scribe" "Issue title" "Issue body" "1,2,3"
 All dev work MUST happen in worktrees:
 
 ```bash
-# Create worktree for a story
+# Create worktree for a task
 git worktree add ../.worktrees/issue-17-assistant-skeleton -b feat/issue-17-assistant-skeleton
 
 # Work in the worktree
@@ -106,7 +106,7 @@ source ~/.claude/lib/agent-tx.sh
 ### Usage
 ```bash
 # Start a transaction — state your intent and justify it
-tx_begin "Implementing rolling summary" "Sprint 1 story #18" "tquick/meeting-scribe" 18
+tx_begin "Implementing rolling summary" "Phase 1 task #18" "tquick/meeting-scribe" 18
 
 # Log each significant action with what + why
 tx_action "Created src/summary_prompt.py" "Prompt template for condensed meeting minutes"
@@ -124,7 +124,7 @@ tx_end "success" "Rolling summary working, broadcasts every 2 minutes"
 
 ### What Makes a Good Transaction
 - **Intent**: Human-readable, high-level ("Implementing rolling summary" not "editing files")
-- **Justification**: Why this is being done now ("Sprint 1 story #18")
+- **Justification**: Why this is being done now ("Phase 1 task #18")
 - **Actions**: Describe what changed and why, not tool-level details
   - Good: `tx_action "Added Ollama health check" "Startup should fail gracefully if Ollama is down"`
   - Bad: `tx_action "Edited main.py line 42" "Changed code"`
