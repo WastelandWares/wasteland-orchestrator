@@ -7,8 +7,7 @@ A Claude Code plugin for multi-agent orchestration: status reporting, transactio
 - **Agent Status Tracking** — Every agent reports what it's doing in real-time via structured status files
 - **Ceremony Automation** — Hooks automatically orchestrate agent initialization (spawn setup, heartbeat, status registration)
 - **Transaction System** — Groups related actions into auditable units with stated intent and justification
-- **Gitea API Library** — Centralized, dual-auth Gitea access (handles Caddy basic auth + Gitea tokens)
-- **Protocol Enforcement** — PreToolUse hooks verify agents follow conventions (no raw curl, worktree isolation, etc.)
+- **Protocol Enforcement** — PreToolUse hooks verify agents follow conventions (worktree isolation, etc.)
 - **Sprint Dispatch** — Automated swarm dispatcher reads sprint manifests and spawns parallel `claude -p` agents
 - **Dashboard Ready** — Status files and transaction logs feed terminal dashboards and the HQ visual dashboard
 
@@ -33,7 +32,7 @@ graph TB
         SWARM["swarm.py<br/>Sprint Dispatcher"]
         DAEMON["dispatch-daemon.sh<br/>Task Queue Daemon"]
         MANIFEST["sprint.yaml<br/>Sprint Manifest"]
-        GENMAN["generate_manifest.py<br/>Gitea → Manifest"]
+        GENMAN["generate_manifest.py<br/>Issue → Manifest"]
     end
 
     subgraph "Execution Layer"
@@ -48,7 +47,6 @@ graph TB
     subgraph "Infrastructure Layer"
         STATUS["Status Files<br/>~/.claude/agents/status/*.json"]
         TX["Transaction Logs<br/>~/.claude/agents/transactions/"]
-        GITEA["Gitea<br/>git.wastelandwares.com<br/>(Issue Tracking)"]
         GITHUB["GitHub<br/>(Code Hosting)"]
         HQ["HQ Dashboard<br/>(wasteland-hq)"]
         PIN["Pinboard<br/>~/.claude/pinboard.json"]
@@ -57,8 +55,6 @@ graph TB
 
     T -->|"ideas, direction"| PM
     PM -->|"generates"| MANIFEST
-    PM -->|"creates issues"| GITEA
-    GENMAN -->|"reads issues"| GITEA
     GENMAN -->|"writes"| MANIFEST
     MANIFEST -->|"input to"| SWARM
     PM -->|"dispatches tasks"| DAEMON
@@ -74,7 +70,6 @@ graph TB
     PIN -->|"read by"| HQ
     BTW -->|"messages between"| PM
     PM --> DOC
-    SWARM -->|"auto-close issues"| GITEA
 ```
 
 ### Task Dispatch Flow
@@ -87,7 +82,6 @@ There are two dispatch mechanisms: the **swarm dispatcher** for full sprint exec
 sequenceDiagram
     participant PM as PM Agent
     participant GEN as generate_manifest.py
-    participant GIT as Gitea
     participant SW as swarm.py
     participant DAG as Dependency DAG
     participant CF as Conflict Detector
@@ -96,9 +90,7 @@ sequenceDiagram
     participant MON as Health Monitor
     participant SF as Status Files
 
-    PM->>GIT: Query issues with "in-sprint" label
-    GIT-->>GEN: Return matching issues
-    GEN->>GEN: Extract files, deps, agents from issue body
+    GEN->>GEN: Extract files, deps, agents from issue data
     GEN-->>PM: sprint.yaml manifest
 
     PM->>SW: python3 swarm.py sprint.yaml
@@ -123,7 +115,6 @@ sequenceDiagram
     end
 
     AG1-->>SW: Exit code 0 (success)
-    SW->>GIT: Close issue, post completion comment
 
     rect rgb(230, 255, 230)
         Note over SW,AG2: Layer 1 — Dependencies met
@@ -131,7 +122,6 @@ sequenceDiagram
     end
 
     AG2-->>SW: Exit code 0 (success)
-    SW->>GIT: Close issue, post sprint summary
     SW-->>PM: Sprint complete (N/N succeeded)
 ```
 
@@ -182,7 +172,7 @@ wasteland-orchestrator/
     plugin.json          # Plugin manifest
   hooks/
     hooks.json           # Hook registration
-    pretooluse.py        # PreToolUse: heartbeat, Gitea enforcement, worktree checks
+    pretooluse.py        # PreToolUse: heartbeat, worktree checks
     posttooluse.py       # PostToolUse: heartbeat, tool tracking
     stop.py              # Stop: cleanup status, archive interrupted transactions
   lib/
@@ -190,8 +180,6 @@ wasteland-orchestrator/
     agent_status.py      # Agent status reporting (Python)
     agent_tx.sh          # Transaction system (shell wrapper)
     agent_tx.py          # Transaction system (Python)
-    gitea_api.sh         # Gitea API client (shell wrapper)
-    gitea_api.py         # Gitea API client (Python)
   tools/
     ww-json-tool.py      # JSON processing utility for agent workflows
   skills/
@@ -236,7 +224,7 @@ graph LR
     end
 
     subgraph "Dashboard"
-        HQW["hq-status-writer.py<br/>(polls every 5s agents, 60s Gitea)"]
+        HQW["hq-status-writer.py<br/>(polls every 5s agents)"]
         HQJ["~/.claude/hq-status.json"]
         HQUI["Wasteland HQ<br/>React Dashboard"]
     end
@@ -308,11 +296,7 @@ flowchart TD
     PRE["PreToolUse Hook<br/>(pretooluse.py)"]
     HB["Update heartbeat<br/>(every tool call)"]
     BASH{"Tool is Bash?"}
-    GITEA{"Touches Gitea API?"}
-    LOCAL{"Uses localhost:3003?"}
-    LIB{"Uses gitea-api.sh?"}
     WT{"Dev agent in worktree?"}
-    BLOCK["BLOCK<br/>Return error message"]
     WARN["ALLOW + WARNING<br/>Inject system message"]
     ALLOW["ALLOW<br/>Proceed normally"]
     POST["PostToolUse Hook<br/>(posttooluse.py)"]
@@ -324,13 +308,7 @@ flowchart TD
     PRE --> HB
     HB --> BASH
     BASH -->|"No"| ALLOW
-    BASH -->|"Yes"| GITEA
-    GITEA -->|"No"| WT
-    GITEA -->|"Yes"| LOCAL
-    LOCAL -->|"Yes"| BLOCK
-    LOCAL -->|"No"| LIB
-    LIB -->|"Yes"| WT
-    LIB -->|"No"| WARN
+    BASH -->|"Yes"| WT
     WT -->|"In worktree"| ALLOW
     WT -->|"In main tree"| WARN
 
@@ -375,7 +353,7 @@ graph TD
     DOG -->|"infra across projects"| DTL_CG & DTL_DND
 ```
 
-**Idea flow:** Thomas's raw ideas → PM triages → Gitea issue created → labeled `in-sprint` → manifest generated → dispatcher spawns agents → agents implement → PR reviewed → merged to `_dev` → PM creates release PR → Thomas merges to `main`.
+**Idea flow:** Thomas's raw ideas → PM triages → issue created → manifest generated → dispatcher spawns agents → agents implement → PR reviewed → merged to `_dev` → PM creates release PR → Thomas merges to `main`.
 
 ## Component Reference
 
@@ -384,7 +362,7 @@ graph TD
 | File | Description |
 |------|-------------|
 | `swarm.py` | Sprint dispatcher — reads manifest, builds DAG, spawns `claude -p` agents, monitors health |
-| `generate_manifest.py` | Converts Gitea issues (with `in-sprint` label) into `sprint.yaml` manifests |
+| `generate_manifest.py` | Provides helper functions for parsing issues into `sprint.yaml` manifests |
 | `sprint.yaml` | Sprint manifest — stories, agents, dependencies, max parallelism |
 
 ### Plugin Infrastructure
@@ -393,7 +371,7 @@ graph TD
 |------|-------------|
 | `.claude-plugin/plugin.json` | Claude Code plugin manifest (name, version, metadata) |
 | `hooks/hooks.json` | Hook registration — maps PreToolUse, PostToolUse, Stop to Python scripts |
-| `hooks/pretooluse.py` | PreToolUse hook — heartbeat, Gitea enforcement, worktree checks |
+| `hooks/pretooluse.py` | PreToolUse hook — heartbeat, worktree checks |
 | `hooks/posttooluse.py` | PostToolUse hook — heartbeat update, last-tool tracking |
 | `hooks/stop.py` | Stop hook — cleanup status file, archive interrupted transactions |
 
@@ -404,8 +382,6 @@ graph TD
 | `lib/manifest.py` | `SprintManifest` and `Story` dataclasses, YAML parser, topological sort |
 | `lib/agent_status.py` | `AgentStatus` class for reading/writing status JSON files |
 | `lib/agent_tx.py` | `Transaction` class for begin/action/end with JSON persistence |
-| `lib/gitea_api.py` | `GiteaClient` with dual-auth (Caddy basic + Gitea token), CRUD helpers |
-| `lib/gitea_updates.py` | `GiteaUpdater` — auto-close issues, post progress/sprint status comments |
 | `lib/conflict.py` | File ownership graph — detects overlapping stories, adds serialization edges |
 | `lib/monitor.py` | `HealthMonitor` — heartbeat checks, stall detection, auto-restart of failed agents |
 
@@ -415,7 +391,6 @@ graph TD
 |------|-------------|
 | `agent-status.sh` | `agent_status_update`, `agent_status_heartbeat`, `agent_status_clear`, `agent_status_list` |
 | `agent-tx.sh` | `tx_begin`, `tx_action`, `tx_end`, `tx_current`, `tx_recent` |
-| `gitea-api.sh` | `gitea_get`, `gitea_post`, `gitea_patch`, `gitea_put`, `gitea_delete`, `gitea_create_issue` |
 | `dispatch.sh` | `dispatch_task`, `dispatch_poll`, `dispatch_wait`, `dispatch_result`, `dispatch_status` |
 | `cook.sh` | `cook_activate`, `cook_deactivate`, `cook_queue_message`, `cook_check_exit`, `cook_is_active` |
 | `btw.sh` | `btw_check`, `btw_count`, `btw_read`, `btw_process_all` — background message queue |
@@ -426,7 +401,7 @@ graph TD
 | File | Description |
 |------|-------------|
 | `~/.claude/bin/dispatch-daemon.sh` | Standalone daemon — watches queue/, spawns `claude --print`, manages lifecycle |
-| `~/.claude/bin/hq-status-writer.py` | Polls status files + Gitea API, writes `hq-status.json` for the React dashboard |
+| `~/.claude/bin/hq-status-writer.py` | Polls status files, writes `hq-status.json` for the React dashboard |
 
 ### Slash Commands
 
@@ -441,16 +416,15 @@ graph TD
 
 | Skill | Description |
 |-------|-------------|
-| `agent-protocol` | Mandatory protocol spec — status reporting, Gitea usage, worktrees, transactions, commits |
+| `agent-protocol` | Mandatory protocol spec — status reporting, worktrees, transactions, commits |
 
 ## Protocol Overview
 
 All agents must:
 1. Report status via `agent_status_update` (hooks handle heartbeat automatically)
-2. Use shared Gitea API library (hooks warn on raw curl, block deprecated endpoints)
-3. Wrap work in transactions with intent/justification
-4. Work in git worktrees (dev agents only, enforced by hooks)
-5. Update persona files with learnings after each session
+2. Wrap work in transactions with intent/justification
+3. Work in git worktrees (dev agents only, enforced by hooks)
+4. Update persona files with learnings after each session
 
 See `skills/agent-protocol/SKILL.md` for the full protocol specification.
 
@@ -481,7 +455,7 @@ claude plugin add wasteland-orchestrator
 
 ### Manual
 ```bash
-git clone https://git.wastelandwares.com/tquick/wasteland-orchestrator.git
+git clone https://github.com/severeon/wasteland-orchestrator.git
 # Add to your Claude Code project's plugin configuration
 ```
 
@@ -490,19 +464,14 @@ git clone https://git.wastelandwares.com/tquick/wasteland-orchestrator.git
 ### Running a Sprint
 
 ```bash
-# 1. PM generates manifest from Gitea issues
-python3 generate_manifest.py tquick/claude-gate --output sprint.yaml
-
-# 2. Human reviews/tweaks manifest
+# 1. Create or edit a sprint manifest
 vim sprint.yaml
 
-# 3. Launch the swarm
+# 2. Launch the swarm
 python3 swarm.py sprint.yaml
 
-# 4. Watch progress (separate terminal)
+# 3. Watch progress (separate terminal)
 python3 swarm.py --status
-
-# Or just watch Gitea — issues auto-close as stories complete
 ```
 
 ### Transaction Example

@@ -26,7 +26,6 @@ from typing import Optional
 from lib.agent_status import AgentStatus, list_agents
 from lib.conflict import detect_conflicts, apply_serialization, print_conflicts
 from lib.manifest import PhaseManifest, Task
-from lib.gitea_updates import GiteaUpdater
 from lib.monitor import HealthMonitor, print_health_report
 
 
@@ -69,14 +68,6 @@ class Dispatcher:
         self.failed: set[str] = set()
         self._shutdown = False
 
-        # Multi-repo: create per-repo updaters
-        self._gitea_updaters: dict[str, GiteaUpdater] = {}
-        repos = set(s.repo for s in manifest.tasks if s.repo)
-        for repo in repos:
-            self._gitea_updaters[repo] = GiteaUpdater(repo)
-        # Legacy single-repo fallback
-        self.gitea = GiteaUpdater(manifest.repo) if manifest.repo else None
-
         # Register signal handlers for clean shutdown
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -114,7 +105,7 @@ class Dispatcher:
             f"Local repo path: {repo_path}",
         ]
         if task.issue:
-            parts.append(f"Gitea issue: #{task.issue}")
+            parts.append(f"Issue: #{task.issue}")
         if task.files:
             parts.append(f"Key files: {', '.join(task.files)}")
         if task.prompt:
@@ -152,7 +143,7 @@ git push -u origin {branch_name}
 ```
 
 ### 5. Create Pull Request
-Create a PR using gh or the Gitea API. The PR title should reference the issue.
+Create a PR using gh. The PR title should reference the issue.
 ```bash
 gh pr create --repo {task.repo} --title "feat: {task.title}" --body "Closes #{task.issue}
 
@@ -164,23 +155,9 @@ gh pr create --repo {task.repo} --title "feat: {task.title}" --body "Closes #{ta
 
 Agent: {task.agent} | Phase: {self.manifest.phase}"
 ```
-If gh doesn't work with Gitea, use curl with the Gitea API:
-```bash
-source ~/.claude/lib/gitea-api.sh
-gitea_post "repos/{task.repo}/pulls" '{{"title":"feat: {task.title}","head":"{branch_name}","base":"main","body":"Closes #{task.issue}\\n\\nAgent: {task.agent}"}}'
-```
-
-### 6. Request Review
-After creating the PR, add a comment mentioning @claude for automated review:
-```bash
-# If the repo has claude-review action, it triggers on @claude mention
-gitea_post "repos/{task.repo}/issues/<PR_NUMBER>/comments" '{{"body":"@claude please review this PR"}}'
-```
-
-### 7. Agent Protocol
+### 6. Agent Protocol
 ```bash
 source ~/.claude/lib/agent-status.sh
-source ~/.claude/lib/gitea-api.sh
 source ~/.claude/lib/agent-tx.sh
 export CLAUDE_AGENT_NAME={task.agent}
 agent_status_update "working" "{task.title}" "{task.repo}" {task.issue or 0}
@@ -193,10 +170,6 @@ agent_status_update "idle" "Completed {task.id}"
 ```
 """)
         return "\n".join(parts)
-
-    def _get_updater(self, task: Task) -> Optional[GiteaUpdater]:
-        """Get the Gitea updater for a task's repo."""
-        return self._gitea_updaters.get(task.repo) or self.gitea
 
     def _spawn_agent(self, task: Task) -> AgentProcess:
         """Spawn a single claude -p agent in the task's repo directory."""
@@ -214,13 +187,6 @@ agent_status_update "idle" "Completed {task.id}"
 
         print(f"[swarm] Spawning {task.agent} for {task.id}: {task.title}")
         print(f"[swarm]   repo: {task.repo} -> {repo_path}")
-
-        updater = self._get_updater(task)
-        if updater and not self.dry_run:
-            try:
-                updater.on_task_started(task)
-            except Exception as e:
-                print(f"[swarm] Warning: Gitea update failed: {e}")
 
         if self.dry_run:
             print(f"[swarm]   DRY RUN: would run: claude -p '<prompt>' > {output_file}")
@@ -272,25 +238,14 @@ agent_status_update "idle" "Completed {task.id}"
         ret = ap.process.poll()
         if ret is not None:
             ap.exit_code = ret
-            updater = self._get_updater(ap.task)
             if ret == 0:
                 ap.state = "done"
                 self.completed.add(task_id)
                 print(f"[swarm] {task_id} completed successfully")
-                if updater:
-                    try:
-                        updater.on_task_completed(ap.task)
-                    except Exception as e:
-                        print(f"[swarm] Warning: Gitea close failed: {e}")
             else:
                 ap.state = "failed"
                 self.failed.add(task_id)
                 print(f"[swarm] {task_id} FAILED (exit code {ret})")
-                if updater:
-                    try:
-                        updater.on_task_failed(ap.task, f"exit code {ret}")
-                    except Exception as e:
-                        print(f"[swarm] Warning: Gitea update failed: {e}")
             self._update_scoreboard()
 
     def _update_scoreboard(self) -> None:
@@ -444,15 +399,6 @@ agent_status_update "idle" "Completed {task.id}"
         # Final scoreboard
         self._update_scoreboard()
         print(f"  Scoreboard: {SCOREBOARD_FILE}")
-
-        # Post final phase status to Gitea (per-repo)
-        if not self.dry_run:
-            for repo, updater in self._gitea_updaters.items():
-                try:
-                    # Filter manifest to this repo's tasks for the status post
-                    updater.post_phase_status(self.manifest, self.completed, self.failed)
-                except Exception as e:
-                    print(f"[swarm] Warning: Gitea phase status for {repo} failed: {e}")
 
         return len(self.failed) == 0 and not self._shutdown
 

@@ -3,10 +3,8 @@
 
 Responsibilities:
 1. Update agent heartbeat on every tool call
-2. Enforce Gitea API library usage (warn on raw curl)
-3. Block deprecated endpoints
-4. Enforce worktree isolation for dev agents
-5. Log tool usage context for transaction audit
+2. Enforce worktree isolation for dev agents
+3. Log tool usage context for transaction audit
 """
 
 import json
@@ -34,49 +32,6 @@ def update_heartbeat():
             json.dump(data, f, indent=2)
     except Exception:
         pass
-
-
-def check_gitea_usage(command: str) -> dict | None:
-    """Check for proper Gitea API usage patterns."""
-    gitea_domains = ["git.wastelandwares.com", "project-management.wastelandwares.com"]
-
-    # Check if this command touches Gitea
-    touches_gitea = any(domain in command for domain in gitea_domains)
-    if not touches_gitea:
-        return None
-
-    # Block deprecated local Gitea
-    if "localhost:3003" in command and ("gitea" in command.lower() or "api/v1" in command):
-        return {
-            "decision": "block",
-            "message": (
-                "Local Gitea at localhost:3003 is DEPRECATED. "
-                "Use: source ~/.claude/lib/gitea-api.sh && gitea_get/gitea_post/gitea_patch"
-            ),
-        }
-
-    # Warn if not using shared library (soft enforcement)
-    library_indicators = [
-        "gitea-api.sh",
-        "gitea_get",
-        "gitea_post",
-        "gitea_patch",
-        "gitea_create_issue",
-        "GITEA_BASIC",
-        "GITEA_BASIC_AUTH",
-    ]
-    uses_library = any(indicator in command for indicator in library_indicators)
-    if not uses_library:
-        return {
-            "decision": "allow",
-            "systemMessage": (
-                "NOTICE: Consider using ~/.claude/lib/gitea-api.sh helpers for Gitea API calls. "
-                "Available: gitea_get, gitea_post, gitea_patch, gitea_create_issue. "
-                "The library handles dual-auth (Caddy basic + Gitea token) automatically."
-            ),
-        }
-
-    return None
 
 
 def check_worktree_isolation(command: str) -> dict | None:
@@ -119,7 +74,7 @@ def main():
     command = tool_input.get("command", "")
 
     # Run checks
-    for check in [check_gitea_usage, check_worktree_isolation]:
+    for check in [check_worktree_isolation]:
         result = check(command)
         if result:
             print(json.dumps(result))
